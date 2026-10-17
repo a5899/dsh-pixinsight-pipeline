@@ -1,0 +1,6 @@
+# dsh-pixinsight-pipeline — DSH profile bundle patch.
+# Registers the plugin (and therefore its bundled pixinsight-pipeline skill)
+# with the host. Loaded from the profile's dsh.profile.bundles list.
+- insert:
+    - id: pixinsight-pipeline
+      name: 'dsh-pixinsight-pipeline'
