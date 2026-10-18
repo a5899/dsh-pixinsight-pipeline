@@ -9,7 +9,7 @@ It bundles three things so it works as a normal DSH plugin:
 1. the **skill** (`skills/pixinsight-pipeline/SKILL.md` + `reference/` knowledge base),
 2. the **bridge CLI** (`lib/pixinsight-mcp/scripts/pi-tool.mjs`) and its ops modules,
 3. the **PJSR watcher** (`lib/pixinsight-mcp/pjsr/pixinsight-mcp-watcher.js`) plus the
-   headless **WBPP** wrapper (`lib/pixinsight-mcp/run-wbpp.ps1`).
+   headless **WBPP** wrapper (`scripts/run-wbpp.ps1`).
 
 ```
 DSH agent ── pi-tool.mjs ──> ~/.pixinsight-mcp/bridge/commands/{id}.json
@@ -64,7 +64,7 @@ Copies the skill to `%DSH_HOME%\skills\pixinsight-pipeline` and the toolkit to
 
 1. Open PixInsight and load the watcher:
    `Script > Run Script File…` → `%DSH_HOME%\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js`.
-   Keep PixInsight open. The watcher logs `PixInsight MCP Watcher v0.1.0` and polls every ~1 s.
+   Keep PixInsight open. The watcher logs `PixInsight MCP Watcher v0.2.0` and polls every 250 ms.
 2. Verify the bridge:
    ```powershell
    node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" list_open_images '{}'
@@ -83,12 +83,18 @@ $args = Join-Path $env:TEMP 'piargs.json'
 node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" run_nxt "@$args"
 ```
 
-Headless WBPP (preprocessing) does not need the watcher — run the official automation mode:
+Headless WBPP (preprocessing) does not need the watcher — run the official automation mode.
+The wrapper in this package encodes the quoting rules that make it work (all parameters
+comma-joined inside one quoted `-r=` value, `WBPP.js` staged at a space-free path):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "%DSH_HOME%\pixinsight-mcp\run-wbpp.ps1" `
-  -InputDir "<lights dir>" -OutputDir "<out dir>"
+powershell -ExecutionPolicy Bypass -File .\scripts\run-wbpp.ps1 `
+  -InputDir "C:\data\lights","C:\data\calib" -OutputDir "C:\data\out" `
+  [-ExtraParams "debayerOutputMethod=0"] [-StagingDir "C:\temp\pi_wbpp"]
 ```
+
+It also reads the resulting log and warns about the registration failures a "successful"
+run can hide. See `skills/pixinsight-pipeline/reference/wbpp-automation.md`.
 
 ## Layout
 

@@ -138,3 +138,159 @@ because the Ha_work existence check always returned 'yes'.
 dstWindow.copyAstrometricSolution(srcWindow);
 ```
 Essential after creating PixelMath composites — SPCC needs WCS data.
+
+## File API — what actually exists
+
+Verified on PixInsight 1.9.4. Several seemingly obvious members do **not** exist,
+and calling them throws inside the watcher poll loop (which used to be fatal).
+
+```javascript
+File.readTextFile(path)          // OK
+File.writeTextFile(path, text)   // OK
+File.exists(path)                // OK
+File.directoryExists(path)       // OK
+File.createDirectory(path, true) // OK
+File.remove(path)                // OK — but throws on a locked file
+```
+
+**These do NOT exist** — do not use them:
+
+| Missing | Use instead |
+|---|---|
+| `File.size(path)` | not available; report via a separate call or skip |
+| `File.appendTextFile(path, s)` | read + concat + `writeTextFile`, or write a fresh file each time |
+| `File.searchDirectory(...)` | the **global** `searchDirectory(pattern)`, visible after `#include` |
+| `File.directoryEntryList(dir)` | `searchDirectory(dir + '/*')` |
+
+`searchDirectory` is a global function, not a `File` member. It returns absolute paths,
+so strip the directory prefix when you need bare names:
+
+```javascript
+var abs = searchDirectory(dir + '/*.json');
+var names = [];
+for (var i = 0; i < abs.length; ++i) {
+   var s = String(abs[i]);
+   names.push(s.substring(s.lastIndexOf('/') + 1));
+}
+```
+
+`File.remove` raises a sharing violation while another process still holds the file
+open (Windows). Always wrap it and fall back to a rename:
+
+```javascript
+function retireCommandFile(path) {
+   try { File.remove(path); return true; } catch (e) {}
+   try { File.rename(path, path + '.done'); return true; } catch (e) {}
+   return false;
+}
+```
+
+## Image.crop() needs an Array
+
+```javascript
+// WRONG — silently does nothing, leaves the image untouched
+img.crop(x0, y0, x1, y1);
+
+// WRONG — "Image.crop(): invalid argument type: Array expected."
+img.crop(new Rect(x0, y0, x1, y1));
+
+// CORRECT — a plain JS array
+img.crop([x0, y0, x1, y1]);
+```
+
+The silent no-op form is the dangerous one: it reports success and the image is
+unchanged, so a "crop" step can appear to work while nothing happens.
+
+## Image statistics take a Rect, not a channel index
+
+```javascript
+// WRONG — "Image.median(): invalid argument type: Rect expected."
+img.median(c);
+img.minimum(c);
+
+// CORRECT — select the channel, measure, then reset
+img.selectedChannel = c;
+var m = img.median();
+img.resetSelections();
+```
+
+`new Statistics(img, c)` also throws (`Wrong number of arguments`). For whole-image
+figures just call `img.median()`, `img.minimum()`, `img.maximum()`, `img.MAD()`
+with no arguments.
+
+## Stretched vs linear input — check before you trust it
+
+A WBPP `masterLight` is **not necessarily linear**. Verify before running any
+linear-stage process (BXT, NXT, SPCC, LinearFit):
+
+```javascript
+var linear = (img.median() < 0.05);   // roughly: sky background below 5%
+```
+
+An already-stretched master typically reports `median ≈ 0.2–0.35` and
+`max ≈ 0.95`. Applying a linear-stage denoise or deconvolution to it, then
+stretching again, produces a washed-out double-stretched result. If the input is
+non-linear, **skip the linear phase entirely** and start from gradient removal on
+the stretched data.
+
+## Undefined globals
+
+These look like they should exist and do not:
+`ColorSpace_RGB`, `ImageColorSpace_RGB`, `UndoFlag_NoSwapFile`, `MTF`.
+
+`new MTF()` throws `MTF is not defined`. Use `HistogramTransformation.H` for
+midtone work instead, or `img.mtf(m, x0, x1)` as an image method.
+
+## HistogramTransformation.H layout
+
+`H` is **five arrays** — R, G, B, L, Alpha — and each array is
+`[blackPoint, midtones, whitePoint, lowClip, highClip]`:
+
+```javascript
+var ht = new HistogramTransformation();
+// identity is [0, 0.5, 1, 0, 1]; mids < 0.5 brightens
+ht.H = [[0, 0.38, 1, 0, 1],   // R
+        [0, 0.38, 1, 0, 1],   // G
+        [0, 0.38, 1, 0, 1],   // B
+        [0, 0.38, 1, 0, 1],   // L
+        [0, 0.5,  1, 0, 1]];  // Alpha — leave at identity
+ht.executeOn(view, false);
+```
+
+Getting this wrong does not throw. A malformed `H` can push a single channel to
+saturation and turn the whole frame solid red while reporting success — always
+re-measure channel means after the call.
+
+## PixelMath channel expressions
+
+The per-channel expression members are `expression0`, `expression1`, `expression2`
+(R/G/B) — **not** `expressionR` / `expressionG` / `expressionB`. Setting the
+non-existent names is silently ignored and the operation becomes a no-op.
+
+```javascript
+var pm = new PixelMath;
+pm.useSingleExpression = false;
+pm.expression0 = '$T * 1.31';
+pm.expression1 = '$T';
+pm.expression2 = '$T * 1.84';
+pm.rescale = false;
+pm.truncate = false;               // keep true only if you want 0..1 clamping
+pm.executeOn(view, false);
+```
+
+Note `truncate = true` clips the lower bound to 0. On a linear frame whose
+background is near zero this destroys shadow detail and shows up later as a
+`no_black_clip` gate failure. Prefer `truncate = false` plus an explicit
+`max(epsilon, ...)` in the expression.
+
+## eval() for capability probes
+
+```javascript
+// Check whether a process exists at runtime
+var available = true;
+try { eval('new ' + name + '()'); } catch (e) { available = false; }
+```
+
+Do **not** check `instance.isValid` to test availability — it is `false` for every
+process until its parameters are set, so it reports false negatives for tools that
+are actually installed.
