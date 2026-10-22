@@ -1,6 +1,6 @@
 {
   "name": "dsh-pixinsight-pipeline",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "DSH plugin that bundles the pixinsight-pipeline skill and its file-based IPC bridge: drive PixInsight 1.9.4 from DeepSeek Harness to process deep-sky astrophotography (HaRGB / HaLRGB / LRGB / RGB) and auto-run WBPP. · 把 PixInsight 深空后期全流程做成 DSH 插件：技能 + 桥接 CLI + PJSR watcher + WBPP 自动化。",
   "type": "module",
   "main": "./lib/index.js",
@@ -67,11 +67,10 @@
     }
   },
   "scripts": {
-    "test": "node test/contract.mjs && node test/smoke.mjs && node test/syntax.mjs && node test/scripts.mjs && node scripts/sync-skill.mjs --check",
+    "test": "node test/contract.mjs && node test/smoke.mjs && node test/syntax.mjs && node test/scripts.mjs && node test/astap.mjs && node scripts/sync-skill.mjs --check",
     "test:skill-sync": "node scripts/sync-skill.mjs --check",
     "wbpp:find-masters": "node lib/pixinsight-mcp/scripts/find-masters.mjs",
     "wbpp:clean": "node lib/pixinsight-mcp/scripts/clean-wbpp-intermediates.mjs",
     "toolkit": "node lib/pixinsight-mcp/scripts/resolve-toolkit.mjs"
   }
 }
-

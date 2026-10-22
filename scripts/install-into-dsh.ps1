@@ -46,4 +46,33 @@ New-Item -ItemType Directory -Force -Path $toolkitDst | Out-Null
 Copy-Item (Join-Path $pkg 'lib\pixinsight-mcp\*') $toolkitDst -Recurse -Force
 Ok "已部署桥接 CLI 到 $toolkitDst"
 
+# --- ASTAP / star catalog ------------------------------------------------
+# PixInsight's SPCC needs a star catalog. Gaia needs a PI account and ~40 GB, so ASTAP is
+# the practical fallback. Only the headless astap_cli is usable from a script: the GUI
+# astap.exe opens a window and blocks forever on any solve/convert call.
+# The installer tries to fetch a headless solver, reuses an existing catalog, then
+# re-verifies. It never downloads a catalog (400 MB - several GB) and never claims a
+# success it cannot prove.
+$ensure = Join-Path $toolkitDst 'scripts\ensure-astap.mjs'
+if (Test-Path $ensure) {
+    Info 'ASTAP: checking headless solver + star catalog...'
+    try {
+        $astap = (& node $ensure --json 2>$null | Out-String) | ConvertFrom-Json
+        if ($astap.ok) {
+            Ok "ASTAP 就绪：$($astap.summary)"
+            $astap.steps | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
+        } else {
+            Write-Host "[warn ] ASTAP 未就绪：$($astap.summary)" -ForegroundColor Yellow
+            foreach ($s in $astap.steps) { Write-Host "        ok: $s" -ForegroundColor DarkGray }
+            if ($astap.needsUserAction) {
+                Write-Host "        需要手动完成：$($astap.needsUserAction.what)" -ForegroundColor Yellow
+                $astap.needsUserAction.manualSteps | ForEach-Object { Write-Host "          - $_" -ForegroundColor DarkGray }
+            }
+            Write-Host "        复检：node `"$ensure`" --check --test-image <一张真实图像>" -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-Host "[warn ] ASTAP 检测失败（不影响技能安装）：$($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 Info '重启 DSH 后技能生效。'

@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-10-22
+
+Headless ASTAP: the plugin now installs a solver a script can actually drive, and verifies
+it against the catalog that is on disk.
+
+### Why this release exists
+
+PixInsight's SPCC needs a star catalog; Gaia requires a PI account and ~40 GB, so ASTAP is
+the practical fallback. But the **GUI `astap.exe` cannot be scripted**: every invocation
+that also asks for output (`-o`, `-tofits`, `-update`) opens a window and blocks forever.
+Measured twice here — each run sat at ~0.2 s CPU for 20+ minutes with a live window and had
+to be killed. ASTAP ships a separate `astap_cli` for automation; that is what this installs.
+
+### Added
+
+- **`lib/pixinsight-mcp/vendor/astap_cli.exe`** — modern headless solver (v2026.09.19,
+  850 KB) bundled in the plugin, so installation needs no network.
+- **`lib/pixinsight-mcp/vendor/astap_setup.exe`** — official 6 MB Inno Setup package kept
+  as a fallback source for the CLI.
+- **`scripts/ensure-astap.mjs`** — installs the headless solver, reuses an existing
+  catalog, repairs `ref_database`, and **proves** the solver can read the catalog before
+  reporting success. Never reports a state it cannot verify.
+- **`test/astap.mjs`** — 8 tests: bundled binary is a real PE, `--check` never writes, the
+  config/catalog mismatch is caught, repair backs up the original, catalog identity comes
+  from the file prefix (D05/D20/D50/D80 all share `.1476`), legacy h-series is classified,
+  and the probe never claims compatibility from an unexecutable binary.
+- D20 catalog (1476 tiles, ~382 MB zipped) ships as a **GitHub Release asset**
+  (`astap-d20-catalog.zip`) — too large for git or npm, downloaded on demand.
+
+### Fixed
+
+- **A config/catalog mismatch made every solve fail silently.** `astap.cfg` said
+  `ref_database=V50` (needs `*.1477`) while only `d20_*.1476` existed, so ASTAP reported
+  "No star database found" while the configuration looked correct.
+- **Probe false positive.** A non-executable binary produced no output, and "no catalog
+  error in empty output" was read as success. The probe now requires positive evidence
+  (`Using star database <code>`) and treats a non-execution as inconclusive.
+- `.gitignore` no longer risks committing the 382 MB catalog archive.
+
 ## [0.3.3] — 2026-10-22
 
 ### Fixed

@@ -2,3 +2,13 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Star-catalog archive built for the GitHub Release (~382 MB). The tiles are already
+# compressed, so git cannot shrink it and GitHub rejects files over 100 MB anyway.
+# Upload it as a release asset — never commit it.
+release-assets/
+
+# Oversized binaries that are fetched at install time instead of shipped in-repo.
+# vendor/astap_cli.exe (850 KB) IS shipped on purpose.
+vendor/*.zip
+vendor/*.msi

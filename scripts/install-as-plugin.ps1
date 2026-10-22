@@ -76,6 +76,33 @@ New-Item -ItemType Directory -Force -Path $toolkitDst | Out-Null
 Copy-Item (Join-Path $pkg 'lib\pixinsight-mcp\*') $toolkitDst -Recurse -Force
 Ok "已部署桥接 CLI 到 $toolkitDst"
 
+# ---------------------------------------------------------------- ASTAP / 星表
+# SPCC 需要星表。Gaia 要 PI 账号且约 40GB，所以用 ASTAP 替代。这一步检测 ASTAP、
+# 核对星表文件、并修正让所有解析静默失败的 ref_database 错配。
+# 不下载星表（400MB~数GB）：只报告，由调用者问用户。
+$ensure = Join-Path $toolkitDst 'scripts\ensure-astap.mjs'
+if (Test-Path $ensure) {
+    Info '检查 ASTAP / 星表...'
+    try {
+        $astap = (& node $ensure --json 2>$null | Out-String) | ConvertFrom-Json
+        if ($astap.ok) {
+            Ok "ASTAP 就绪：$($astap.summary)"
+            if ($astap.fixes -and $astap.fixes.Count -gt 0) {
+                $astap.fixes | ForEach-Object { Write-Host "       已修复: $_" -ForegroundColor Yellow }
+            }
+        } else {
+            Write-Host "[warn ] ASTAP 未就绪：$($astap.summary)" -ForegroundColor Yellow
+            if ($astap.installHint) { Write-Host "        $($astap.installHint)" -ForegroundColor DarkGray }
+            if ($astap.needsCatalogDownload) {
+                Write-Host "        星表下载：$($astap.downloadUrl)  （D20 约 400 MB）" -ForegroundColor DarkGray
+            }
+            Write-Host "        装好后重跑：node `"$ensure`"" -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-Host "[warn ] ASTAP 检测失败（不影响插件安装）：$($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 # ---------------------------------------------------------------- 登记 bundles（保留文件格式的定点插入）
 $text = Get-Content $profileJson -Raw -Encoding UTF8
 if ($text -notmatch [regex]::Escape("`"$pkgName`"")) {
