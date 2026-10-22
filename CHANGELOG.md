@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-10-22
+
+Path hygiene: the docs no longer point at directories that may not exist, and the two
+copies of the skill can no longer drift apart unnoticed.
+
+### Added
+
+- **`lib/pixinsight-mcp/scripts/resolve-toolkit.mjs`** — resolves the toolkit on *this*
+  machine instead of assuming a layout. Probes `PIXINSIGHT_MCP_TOOLKIT`, then
+  `%DSH_HOME%\pixinsight-mcp` (installed), then walks up for `<workspace>\tools\pixinsight-mcp`
+  and `lib/pixinsight-mcp` (source tree), verifying each candidate by a fingerprint
+  (`scripts/pi-tool.mjs` + `pjsr/pixinsight-mcp-watcher.js`). `--check` reports per-file
+  presence; `--sub <path>` prints a concrete tool path; exits 1 when nothing is usable.
+- **`scripts/sync-skill.mjs`** — compares the user skill root (`%DSH_HOME%\skills\...`)
+  against the package copy and reports/repairs drift. Default is report-only; `--check`
+  exits 1 on differences (CI-friendly); `--to-user` / `--to-package` copy one way;
+  `--dry-run` previews; `--diff` shows a line-level diff.
+
+### Changed
+
+- All documentation paths (`SKILL.md`, `AGENTS.md`, `README.md`) now use `<toolkit>\...`
+  with a Step 0 that resolves it, replacing `%DSH_HOME%\pixinsight-mcp\...` and
+  `<plugin>\lib\pixinsight-mcp\...` placeholders that were dead on a source-tree machine.
+- The two skill copies are re-merged and now in sync (14 files): the package copy's newer
+  references (`pjsr-gotchas` 140→296 lines, `processing-knowledge`, ONBOARDING,
+  director-flow, preflight, wbpp-automation) landed in the user copy, and the user copy's
+  field-tested references (`layered-enhancement`, `narrowband-palette`, `support-weights`)
+  landed in the package.
+
 ## [0.3.0] — 2026-10-22
 
 WBPP stops being the opening move: the skill now looks for a master first, defaults its

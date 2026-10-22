@@ -41,12 +41,18 @@ parameter guide, then drives each step via `pi-tool.mjs`.
 
 ## Installed components (this machine)
 
-| Component | Path | Role |
+Path prefix `%DSH_HOME%\pixinsight-mcp` is the **installed** layout; the source tree uses
+`<workspace>\tools\pixinsight-mcp` with an identical internal layout. Do not assume which one
+is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prints.
+
+| Component | Path (relative to toolkit root) | Role |
 |---|---|---|
 | Pipeline skill | `~/.dsh/skills/pixinsight-pipeline/` | This file + `reference/` knowledge |
-| Node bridge CLI | `%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs` | Writes/reads bridge files, runs tools |
-| Bridge backend | `%DSH_HOME%\pixinsight-mcp\agents\ops\bridge.mjs` | createBridgeContext(), isAlive() (Windows-aware) |
-| PJSR watcher | `%DSH_HOME%\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js` | Load in PixInsight (Script > Run Script) |
+| Node bridge CLI | `scripts\pi-tool.mjs` | Writes/reads bridge files, runs tools |
+| Bridge backend | `agents\ops\bridge.mjs` | createBridgeContext(), isAlive() (Windows-aware) |
+| PJSR watcher | `pjsr\pixinsight-mcp-watcher.js` | Load in PixInsight (Script > Run Script) |
+| WBPP wrapper | `run-wbpp.ps1` | Headless WBPP automation |
+| Toolkit resolver | `scripts\resolve-toolkit.mjs` | Prints the real toolkit root on this machine |
 | Bridge dir | `~/.pixinsight-mcp/bridge/{commands,results,logs}` | Shared filesystem |
 
 ## DSH Quick Start
@@ -64,13 +70,13 @@ parameter guide, then drives each step via `pi-tool.mjs`.
    `"first_use"` is `false`.
    See `reference/ONBOARDING.md` for the exact agent script.
 1. **Start PixInsight and load the watcher**
-   - Open `%DSH_HOME%\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js` in PixInsight:
+   - Open `<toolkit>\pjsr\pixinsight-mcp-watcher.js` in PixInsight:
      `Script > Run Script File... > select pixinsight-mcp-watcher.js`.
    - Keep the PixInsight window open. The watcher logs `"PixInsight MCP Watcher v0.2.0"` and
      polls the bridge every 250 ms. `Ctrl+F11` or a `shutdown` sentinel file stops it.
 2. **Verify the bridge** (with PixInsight + watcher running):
    ```
-   node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" list_open_images '{}'
+   node "<toolkit>\scripts\pi-tool.mjs" list_open_images '{}'
    ```
    A successful run prints a JSON array of open images. If `pi-tool` reports the PixInsight
    process not found, the watcher/process isn't up.
@@ -200,10 +206,36 @@ Every job starts by resolving the master from the material folder. **Never ask t
 material folder (`素材文件夹`) holding the raw frames *and* usually the WBPP output; the master
 is normally already there.
 
+### Step 0 — resolve the toolkit (once per session)
+
+Tool paths below are written relative to the toolkit root, because the same skill is used
+from two layouts (installed at `%DSH_HOME%\pixinsight-mcp`, or the source tree at
+`<workspace>\tools\pixinsight-mcp`). Resolve it once, then use the printed path.
+
+PowerShell — tries both layouts in one line and stops at the first that exists:
+
+```powershell
+$rt = @(
+  "$env:DSH_HOME\pixinsight-mcp\scripts\resolve-toolkit.mjs",
+  "C:\Users\a5093\Documents\deepseek-harness\default-workspace\tools\pixinsight-mcp\scripts\resolve-toolkit.mjs"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+node $rt --check
+```
+
+The output is JSON: `ok: true` plus `checks.piTool` / `checks.watcher` / `checks.wbppWrapper`
+/ `checks.findMasters` / `checks.cleanWbpp` all true, and `toolkit` naming the real root.
+**Stop and fix the install if `ok` is false** — every command below depends on those files.
+
+To get a concrete path for any single tool, ask the resolver rather than guessing:
+
+```
+node "$rt" --sub scripts/find-masters.mjs
+```
+
 ### Step 1 — hunt the master (always first)
 
 ```
-node <plugin>\lib\pixinsight-mcp\scripts\find-masters.mjs --dir "<素材文件夹>" [--text]
+node <toolkit>\scripts\find-masters.mjs --dir "<素材文件夹>" [--text]
 ```
 
 Recursive scan of the folder and its subfolders; returns `verdict`:
@@ -235,8 +267,8 @@ WBPP's tree (`registered/`, `calibrated/`, `debayer/`, `cache/`, `logs/`) is scr
 rebuilt by any re-run. Report its size, **ask** before deleting, then:
 
 ```
-node <plugin>\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --dry-run   # size report (default)
-node <plugin>\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --yes       # delete
+node <toolkit>\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --dry-run   # size report (default)
+node <toolkit>\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --yes       # delete
 ```
 
 It refuses (exit 2) when no **light** master exists to protect, never touches `master/`,
@@ -276,7 +308,7 @@ failures that a "successful" run can hide. `-OutputDir` defaults to `<InputDir>\
 (the material folder) when omitted:
 
 ```
-powershell -ExecutionPolicy Bypass -File <plugin>\lib\pixinsight-mcp\run-wbpp.ps1 `
+powershell -ExecutionPolicy Bypass -File <toolkit>\run-wbpp.ps1 `
   -InputDir "C:\data\lights" [-OutputDir "C:\data\lights\wbpp"] `
   [-ExtraParams "debayerOutputMethod=0,integrate=true"] [-StagingDir "C:\temp\pi_wbpp"]
 ```

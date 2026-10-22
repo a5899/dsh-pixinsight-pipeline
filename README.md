@@ -62,12 +62,23 @@ Copies the skill to `%DSH_HOME%\skills\pixinsight-pipeline` and the toolkit to
 
 ## First run
 
+The toolkit lives either at `%DSH_HOME%\pixinsight-mcp` (installed) or in the source tree at
+`<workspace>\tools\pixinsight-mcp`. Resolve it once instead of guessing:
+
+```powershell
+node "$env:DSH_HOME\pixinsight-mcp\scripts\resolve-toolkit.mjs" --check
+```
+
+If that path is missing, run `<workspace>\tools\pixinsight-mcp\scripts\resolve-toolkit.mjs`
+instead. It prints the resolved `toolkit` root and per-file checks; every `<toolkit>\...`
+below means that root.
+
 1. Open PixInsight and load the watcher:
-   `Script > Run Script File…` → `%DSH_HOME%\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js`.
+   `Script > Run Script File…` → `<toolkit>\pjsr\pixinsight-mcp-watcher.js`.
    Keep PixInsight open. The watcher logs `PixInsight MCP Watcher v0.2.0` and polls every 250 ms.
 2. Verify the bridge:
    ```powershell
-   node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" list_open_images '{}'
+   node "<toolkit>\scripts\pi-tool.mjs" list_open_images '{}'
    ```
    `[]` means alive.
 
@@ -80,7 +91,7 @@ inner double quotes):
 ```powershell
 $args = Join-Path $env:TEMP 'piargs.json'
 '{"view_id":"MyTarget","denoise":0.25,"detail":0.15}' | Set-Content $args -Encoding UTF8
-node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" run_nxt "@$args"
+node "<toolkit>\scripts\pi-tool.mjs" run_nxt "@$args"
 ```
 
 Headless WBPP (preprocessing) does not need the watcher — run the official automation mode.
@@ -89,7 +100,7 @@ comma-joined inside one quoted `-r=` value, `WBPP.js` staged at a space-free pat
 `-OutputDir` is optional and defaults to `<first InputDir>\wbpp`, i.e. inside the material folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\lib\pixinsight-mcp\run-wbpp.ps1 `
+powershell -ExecutionPolicy Bypass -File "<toolkit>\run-wbpp.ps1" `
   -InputDir "C:\data\lights"[,"C:\data\calib"] [-OutputDir "C:\data\lights\wbpp"] `
   [-ExtraParams "debayerOutputMethod=0"] [-StagingDir "C:\temp\pi_wbpp"]
 ```
@@ -99,19 +110,19 @@ run can hide. See `skills/pixinsight-pipeline/reference/wbpp-automation.md`.
 
 ### Look for a master before running WBPP
 
-WBPP is the fallback, not the opening move. `lib/pixinsight-mcp/scripts/find-masters.mjs`
-scans a material folder recursively and reports `ready` / `only_calibration` / `none`, so an
-existing master is used instead of stacking the frames again:
+WBPP is the fallback, not the opening move. `<toolkit>\scripts\find-masters.mjs` scans a
+material folder recursively and reports `ready` / `only_calibration` / `none`, so an existing
+master is used instead of stacking the frames again:
 
 ```powershell
-node .\lib\pixinsight-mcp\scripts\find-masters.mjs --dir "C:\data\lights" --text
+node "<toolkit>\scripts\find-masters.mjs" --dir "C:\data\lights" --text
 ```
 
-When WBPP does run, `lib/pixinsight-mcp/scripts/clean-wbpp-intermediates.mjs` reports (and,
-with `--yes`, deletes) its scratch tree while preserving `master/`:
+When WBPP does run, `<toolkit>\scripts\clean-wbpp-intermediates.mjs` reports (and, with
+`--yes`, deletes) its scratch tree while preserving `master/`:
 
 ```powershell
-node .\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "C:\data\lights\wbpp" --dry-run
+node "<toolkit>\scripts\clean-wbpp-intermediates.mjs" --dir "C:\data\lights\wbpp" --dry-run
 ```
 
 ## Layout
@@ -122,8 +133,9 @@ cordis.patch.yml             # - insert: id: pixinsight-pipeline, name: dsh-pixi
 AGENTS.md                    # step-by-step PixInsight watcher setup for AI agents
 lib/index.js                 # registers the bundled skill via ctx.skills.registerProvider()
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
-lib/pixinsight-mcp/scripts/  # find-masters.mjs, clean-wbpp-intermediates.mjs
+lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
+scripts/                     # install-*.ps1, sync-skill.mjs (keeps the two skill copies in step)
 scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1
 ```
 

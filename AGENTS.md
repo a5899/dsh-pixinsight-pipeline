@@ -10,20 +10,35 @@ with `PixInsight process not found`.
 
 ---
 
+## 0. Resolve the toolkit first
+
+The toolkit lives in one of two places — installed (`%DSH_HOME%\pixinsight-mcp`) or the
+source tree (`<workspace>\tools\pixinsight-mcp`). Do not hardcode either; ask the resolver:
+
+```powershell
+node "$env:DSH_HOME\pixinsight-mcp\scripts\resolve-toolkit.mjs" --check
+```
+
+If that file does not exist, use `<workspace>\tools\pixinsight-mcp\scripts\resolve-toolkit.mjs`.
+`ok: true` means `pi-tool`, the watcher and the WBPP wrapper were all found; the JSON also
+reports the resolved `toolkit` root. Every `<toolkit>\...` path below means that root.
+
 ## 1. Make sure the PixInsight-side script is loaded
 
-The watcher script lives at one of:
+The watcher script lives at:
 
 | Install method | Watcher path |
 |---|---|
 | Installed as a DSH plugin | `%DSH_HOME%\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js` |
-| Running from source | `lib/pixinsight-mcp/pjsr/pixinsight-mcp-watcher.js` |
+| Running from source | `<workspace>\tools\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js` |
+
+Either way, `<toolkit>\pjsr\pixinsight-mcp-watcher.js` from Step 0 is the real file.
 
 ### Option A — headless auto-load (preferred)
 
 ```powershell
 $pi = "C:\Program Files\PixInsight\bin\PixInsight.exe"
-$w  = "$env:DSH_HOME\pixinsight-mcp\pjsr\pixinsight-mcp-watcher.js"
+$w  = "<toolkit>\pjsr\pixinsight-mcp-watcher.js"
 Start-Process $pi -ArgumentList '-n','--automation-mode',("-r=" + $w)
 ```
 
@@ -35,12 +50,12 @@ ImageSolver libraries). Wait, then verify.
 1. Open PixInsight.
 2. `Script > Run Script File…` → select the watcher `.js`.
 3. Keep PixInsight open. The Process Console prints
-   `PixInsight MCP Watcher v0.1.0 … Polling every 1000ms`.
+   `PixInsight MCP Watcher v0.2.0 … Polling every 250ms`.
 
 ### Verify the bridge
 
 ```powershell
-node "$env:DSH_HOME\pixinsight-mcp\scripts\pi-tool.mjs" list_open_images '{}'
+node "<toolkit>\scripts\pi-tool.mjs" list_open_images '{}'
 ```
 
 - `[]` → bridge alive, go ahead.
@@ -54,7 +69,7 @@ node "$env:DSH_HOME\pixinsight-mcp\scripts\pi-tool.mjs" list_open_images '{}'
 Read `skills/pixinsight-pipeline/SKILL.md`, then run **one step at a time** with `pi-tool`:
 
 ```powershell
-$piTool = "$env:DSH_HOME\pixinsight-mcp\scripts\pi-tool.mjs"
+$piTool = "<toolkit>\scripts\pi-tool.mjs"
 node $piTool list_open_images '{}'
 node $piTool get_image_stats '{"view_id":"MyTarget"}'
 ```
@@ -95,7 +110,7 @@ missing, ask the user instead of inventing a profile.
 have checked the material folder:
 
 ```powershell
-node "$env:DSH_HOME\pixinsight-mcp\scripts\find-masters.mjs" --dir "<素材文件夹>" --text
+node "<toolkit>\scripts\find-masters.mjs" --dir "<素材文件夹>" --text
 ```
 
 `verdict=ready` → use that master and skip WBPP. Only `none` / `only_calibration` justify
@@ -104,14 +119,14 @@ asking the user, and the question must name the folder and what was found.
 `-OutputDir` is optional and defaults to `<InputDir>\wbpp`, i.e. inside the material folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$env:DSH_HOME\pixinsight-mcp\run-wbpp.ps1" `
+powershell -ExecutionPolicy Bypass -File "<toolkit>\run-wbpp.ps1" `
   -InputDir "<素材文件夹>" [-OutputDir "<素材文件夹>\wbpp"]
 ```
 
 After a successful run, report the size of WBPP's scratch tree and **ask** before deleting it:
 
 ```powershell
-node "$env:DSH_HOME\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs" --dir "<素材文件夹>\wbpp" --dry-run
+node "<toolkit>\scripts\clean-wbpp-intermediates.mjs" --dir "<素材文件夹>\wbpp" --dry-run
 ```
 
 `--dry-run` is the default; `--yes` deletes. It refuses (exit 2) without a light master to
