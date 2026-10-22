@@ -16,9 +16,10 @@
 //   node sync-skill.mjs --to-package             # user copy  -> package copy
 //   node sync-skill.mjs --to-user                # package copy -> user copy
 //   node sync-skill.mjs --dry-run --to-package   # show what would be copied
-//   node sync-skill.mjs --check                  # exit 1 if copies differ (CI-friendly)
+//   node sync-skill.mjs --check                  # same, but quiet when in sync (gate form)
 //
-// Exit codes: 0 in sync / action ok, 1 differences found (--check) or copy failed, 2 bad use.
+// Exit codes: 0 in sync / copy ok, 1 differences found or copy failed, 2 bad use.
+// Reporting modes exit 1 on drift, so the tool is usable as a gate either way.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -71,20 +72,38 @@ if (!PKG_SKILL) {
   console.error('package skill copy not found (looked for skills/pixinsight-pipeline above ' + HERE + ')');
   process.exit(2);
 }
+// A missing user copy is not drift — it means the skill was never installed that way
+// (a plugin-only install is legitimate). Status/check must not fail on it, otherwise
+// `npm test` goes red on a machine that simply uses the package instead.
 if (!fs.existsSync(path.join(USER_SKILL, 'SKILL.md'))) {
-  console.error(`user skill copy not found: ${USER_SKILL}`);
-  console.error('Install it first (scripts\\install-into-dsh.ps1) or check DSH_HOME.');
-  process.exit(2);
+  if (args.to === 'package') {
+    console.error(`user skill copy not found: ${USER_SKILL}`);
+    console.error('Nothing to copy from. Install it first (scripts\\install-into-dsh.ps1).');
+    process.exit(2);
+  }
+  console.log(`user skill copy not found: ${USER_SKILL}`);
+  console.log('Nothing installed at that path, so there is no drift to check.');
+  console.log('(A plugin-only install is legitimate; run scripts\\install-into-dsh.ps1 to add the');
+  console.log(' skill-root copy, or set DSH_HOME if it lives elsewhere.)');
+  process.exit(0);
 }
 
-/** All files under a skill dir, as relative paths. */
+/**
+ * All files under a skill dir, as relative paths.
+ * Editor swap files, OS metadata and anything that looks like a backup are skipped:
+ * they are not part of the skill and would otherwise show up as phantom drift.
+ */
+const IGNORED = /(^|[\\/])(\.DS_Store|Thumbs\.db|node_modules)([\\/]|$)|\.(bak|bak-[\w.-]+|tmp|swp|orig)$|~$/i;
+
 function listFiles(root) {
   const out = [];
   const walk = (d) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, e.name);
+      const rel = path.relative(root, full);
+      if (IGNORED.test(rel)) continue;
       if (e.isDirectory()) walk(full);
-      else if (e.isFile()) out.push(path.relative(root, full));
+      else if (e.isFile()) out.push(rel);
     }
   };
   walk(root);
@@ -190,5 +209,9 @@ console.log('');
 console.log('Resolve with one of:');
 console.log('  node sync-skill.mjs --to-package    # user copy is authoritative');
 console.log('  node sync-skill.mjs --to-user       # package copy is authoritative');
+console.log('');
+console.log('Exit code 1 means the copies differ, so this works as a gate with or without --check.');
 
-process.exit(args.check ? 1 : 0);
+// Drift is a non-zero result in every mode — dropping --check must not turn a broken
+// state into a green one.
+process.exit(1);

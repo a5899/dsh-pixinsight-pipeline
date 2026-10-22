@@ -1,10 +1,10 @@
-// Syntax + export invariants for every ops module.
+// Syntax + export invariants for every ops module and every toolkit script.
 //
 // node --check per file (one process per file, because a single pwsh command
 // running many node processes is flaky on this host), plus a check that
 // pi-tool.mjs keeps its imports resolvable and its tool table unique.
 //
-// Run: node test\syntax.mjs   (or `npm test`, which runs all three suites)
+// Run: node test\syntax.mjs   (or `npm test`, which runs all four suites)
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -14,17 +14,32 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const opsDir = path.join(root, 'lib', 'pixinsight-mcp', 'agents', 'ops');
+const scriptsDir = path.join(root, 'lib', 'pixinsight-mcp', 'scripts');
 
 let failed = 0;
-for (const file of fs.readdirSync(opsDir).filter((f) => f.endsWith('.mjs')).sort()) {
-  const abs = path.join(opsDir, file);
+
+/** node --check one file, recording a failure instead of throwing. */
+function checkSyntax(abs) {
+  const label = path.relative(root, abs);
   try {
     execFileSync(process.execPath, ['--check', abs], { stdio: 'pipe' });
-    console.log(`ok  syntax  ${file}`);
+    console.log(`ok  syntax  ${label}`);
+    return true;
   } catch (err) {
     failed += 1;
-    console.error(`FAIL syntax  ${file}\n${err.stderr?.toString() || err.message}`);
+    console.error(`FAIL syntax  ${label}\n${err.stderr?.toString() || err.message}`);
+    return false;
   }
+}
+
+for (const file of fs.readdirSync(opsDir).filter((f) => f.endsWith('.mjs')).sort()) {
+  checkSyntax(path.join(opsDir, file));
+}
+
+// The toolkit CLI scripts (pi-tool, find-masters, clean-wbpp, resolve-toolkit) are the
+// ones an agent actually executes, so a syntax error there is worse than in an ops module.
+for (const file of fs.readdirSync(scriptsDir).filter((f) => f.endsWith('.mjs')).sort()) {
+  checkSyntax(path.join(scriptsDir, file));
 }
 
 // pi-tool.mjs: every relative import must resolve, and the case table must not

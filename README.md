@@ -135,9 +135,28 @@ lib/index.js                 # registers the bundled skill via ctx.skills.regist
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
 lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
-scripts/                     # install-*.ps1, sync-skill.mjs (keeps the two skill copies in step)
-scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1
+scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1, sync-skill.mjs
+test/                        # contract, smoke, syntax, scripts — run by `npm test`
 ```
+
+## Tests
+
+```powershell
+npm test
+```
+
+Five gates, no PixInsight required:
+
+| Suite | Covers |
+|---|---|
+| `test/contract.mjs` | skill provider contract (rank, locator, frontmatter) |
+| `test/smoke.mjs` | 69 bridge operations against a stub PJSR |
+| `test/syntax.mjs` | `node --check` over every ops module **and** toolkit script; pi-tool imports resolve; command table has no duplicates |
+| `test/scripts.mjs` | `find-masters` verdicts and channel parsing, `clean-wbpp-intermediates` dry-run/protect/refuse, `resolve-toolkit` layout detection |
+| `sync-skill.mjs --check` | the user skill root and the package copy have not drifted |
+
+The last gate exits 0 when the skill root is not installed at all — a plugin-only install is
+legitimate, and `npm test` must not go red on a machine that simply uses the package.
 
 ## Notes / gotchas
 

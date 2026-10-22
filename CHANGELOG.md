@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-10-22
+
+Test hygiene: the gates that existed but never ran now run, and the new WBPP scripts are
+covered by real fixtures.
+
+### Added
+
+- **`test/scripts.mjs`** — 12 behavioural tests over temp-directory fixtures:
+  `find-masters` verdicts (`ready` / `only_calibration` / `none`), nested-master discovery,
+  channel parsing that must not read `EXPTIME-300s` as SII and must never treat
+  `masterFlat` / `masterDark` as pipeline input; `clean-wbpp-intermediates` default dry-run,
+  `--yes` deletion preserving every master, refusal (exit 2) on a calibration-only folder,
+  and `--keep-logs`; `resolve-toolkit` detection plus `--sub` success/failure.
+- npm scripts `test:skill-sync`, `wbpp:find-masters`, `wbpp:clean`, `toolkit`.
+
+### Fixed
+
+- **`test/syntax.mjs` was never executed by `npm test`** although its own header claimed it
+  was. It is now part of the chain, and it also checks every toolkit script under
+  `lib/pixinsight-mcp/scripts/`, not just `agents/ops/`.
+- **`sync-skill.mjs` reported phantom drift.** Editor backups and OS metadata
+  (`.bak*`, `.tmp`, `.swp`, `~`, `.DS_Store`, `Thumbs.db`, `node_modules`) are excluded from
+  the comparison — a stray `SKILL.md.bak-<date>` used to look like a changed file.
+- **`sync-skill.mjs` exited 0 on drift** unless `--check` was passed, so a gate that forgot
+  the flag went green while the copies disagreed. It now exits 1 whenever they differ.
+- **`sync-skill.mjs` failed on a machine without a skill-root install.** A plugin-only
+  install is legitimate; status/check now report "nothing to check" and exit 0. Copy modes
+  still fail loudly when there is nothing to copy from.
+- README `Layout` listed `scripts/` twice.
+
 ## [0.3.1] — 2026-10-22
 
 Path hygiene: the docs no longer point at directories that may not exist, and the two
