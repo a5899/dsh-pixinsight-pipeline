@@ -1,4 +1,4 @@
-# run-wbpp.ps1 — drive PixInsight's WeightedBatchPreprocessing in CLI automation mode.
+﻿# run-wbpp.ps1 — drive PixInsight's WeightedBatchPreprocessing in CLI automation mode.
 # Usage:
 #   powershell -File run-wbpp.ps1 -InputDir "C:\path\素材" [-OutputDir "C:\path\out"] \
 #       [-ExtraParams "imageRegistration=true,integrate=true,debayerOutputMethod=0"]

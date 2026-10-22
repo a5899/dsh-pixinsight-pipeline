@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   把 pixinsight-pipeline 技能装到用户技能根（~/.dsh/skills），不走插件机制。
 .DESCRIPTION

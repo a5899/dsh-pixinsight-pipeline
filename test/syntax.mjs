@@ -62,6 +62,42 @@ const dupes = cases.filter((name, i) => cases.indexOf(name) !== i);
 assert.deepEqual([...new Set(dupes)], [], `duplicate command cases: ${[...new Set(dupes)].join(', ')}`);
 console.log(`ok  commands  ${cases.length} unique case labels`);
 
+// PowerShell scripts containing non-ASCII text MUST carry a UTF-8 BOM. Windows
+// PowerShell 5.1 (the default on zh-CN Windows) decodes BOM-less files as GBK, so the
+// Chinese comments become mojibake and a quoted string can lose its terminator —
+// `install-into-dsh.ps1` was unparseable exactly this way and the install silently never ran.
+const psFiles = [
+  path.join(root, 'lib', 'pixinsight-mcp', 'run-wbpp.ps1'),
+  ...fs
+    .readdirSync(path.join(root, 'scripts'))
+    .filter((f) => f.endsWith('.ps1'))
+    .map((f) => path.join(root, 'scripts', f)),
+];
+
+for (const abs of psFiles) {
+  const rel = path.relative(root, abs);
+  const bytes = fs.readFileSync(abs);
+  const hasBom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  const hasNonAscii = bytes.some((b) => b > 0x7f);
+  if (hasNonAscii) {
+    assert.ok(hasBom, `${rel} contains non-ASCII text but has no UTF-8 BOM (PowerShell 5.1 will misparse it)`);
+    console.log(`ok  ps-bom  ${rel}`);
+  } else {
+    console.log(`ok  ps-bom  ${rel} (ASCII only, BOM not required)`);
+  }
+  // Whatever the encoding, the script must actually parse.
+  try {
+    execFileSync(
+      'powershell',
+      ['-NoProfile', '-Command', `$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('${abs.replace(/'/g, "''")}',[ref]$null,[ref]$e);if($e){exit 1}`],
+      { stdio: 'pipe' },
+    );
+  } catch {
+    failed += 1;
+    console.error(`FAIL parse  ${rel}`);
+  }
+}
+
 if (failed) {
   console.error(`\n${failed} file(s) failed syntax check`);
   process.exitCode = 1;

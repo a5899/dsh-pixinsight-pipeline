@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   把 dsh-pixinsight-pipeline 作为 DSH 插件安装进 profile（推荐方式）。
 .DESCRIPTION

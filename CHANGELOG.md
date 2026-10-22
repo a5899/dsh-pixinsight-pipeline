@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] — 2026-10-22
+
+### Fixed
+
+- **The installers were unparseable on a Chinese-locale Windows PowerShell 5.1.**
+  `install-into-dsh.ps1` and `install-as-plugin.ps1` are UTF-8 **without** a BOM, so
+  PowerShell 5.1 decoded them as GBK: the Chinese help comments turned into mojibake and
+  `Info '重启 DSH 后技能生效。'` lost its closing quote, aborting with
+  `字符串缺少终止符` / `The string is missing the terminator: '`. The install never ran.
+  Both installers and `run-wbpp.ps1` are now written with a UTF-8 BOM, which 5.1 and 7 both
+  read correctly. Verified by parsing all three and running the install end to end.
+
 ## [0.3.2] — 2026-10-22
 
 Test hygiene: the gates that existed but never ran now run, and the new WBPP scripts are
