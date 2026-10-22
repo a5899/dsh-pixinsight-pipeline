@@ -9,7 +9,7 @@ It bundles three things so it works as a normal DSH plugin:
 1. the **skill** (`skills/pixinsight-pipeline/SKILL.md` + `reference/` knowledge base),
 2. the **bridge CLI** (`lib/pixinsight-mcp/scripts/pi-tool.mjs`) and its ops modules,
 3. the **PJSR watcher** (`lib/pixinsight-mcp/pjsr/pixinsight-mcp-watcher.js`) plus the
-   headless **WBPP** wrapper (`scripts/run-wbpp.ps1`).
+   headless **WBPP** wrapper (`lib/pixinsight-mcp/run-wbpp.ps1`).
 
 ```
 DSH agent ── pi-tool.mjs ──> ~/.pixinsight-mcp/bridge/commands/{id}.json
@@ -85,16 +85,34 @@ node "%DSH_HOME%\pixinsight-mcp\scripts\pi-tool.mjs" run_nxt "@$args"
 
 Headless WBPP (preprocessing) does not need the watcher — run the official automation mode.
 The wrapper in this package encodes the quoting rules that make it work (all parameters
-comma-joined inside one quoted `-r=` value, `WBPP.js` staged at a space-free path):
+comma-joined inside one quoted `-r=` value, `WBPP.js` staged at a space-free path).
+`-OutputDir` is optional and defaults to `<first InputDir>\wbpp`, i.e. inside the material folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-wbpp.ps1 `
-  -InputDir "C:\data\lights","C:\data\calib" -OutputDir "C:\data\out" `
+powershell -ExecutionPolicy Bypass -File .\lib\pixinsight-mcp\run-wbpp.ps1 `
+  -InputDir "C:\data\lights"[,"C:\data\calib"] [-OutputDir "C:\data\lights\wbpp"] `
   [-ExtraParams "debayerOutputMethod=0"] [-StagingDir "C:\temp\pi_wbpp"]
 ```
 
 It also reads the resulting log and warns about the registration failures a "successful"
 run can hide. See `skills/pixinsight-pipeline/reference/wbpp-automation.md`.
+
+### Look for a master before running WBPP
+
+WBPP is the fallback, not the opening move. `lib/pixinsight-mcp/scripts/find-masters.mjs`
+scans a material folder recursively and reports `ready` / `only_calibration` / `none`, so an
+existing master is used instead of stacking the frames again:
+
+```powershell
+node .\lib\pixinsight-mcp\scripts\find-masters.mjs --dir "C:\data\lights" --text
+```
+
+When WBPP does run, `lib/pixinsight-mcp/scripts/clean-wbpp-intermediates.mjs` reports (and,
+with `--yes`, deletes) its scratch tree while preserving `master/`:
+
+```powershell
+node .\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "C:\data\lights\wbpp" --dry-run
+```
 
 ## Layout
 
@@ -104,6 +122,7 @@ cordis.patch.yml             # - insert: id: pixinsight-pipeline, name: dsh-pixi
 AGENTS.md                    # step-by-step PixInsight watcher setup for AI agents
 lib/index.js                 # registers the bundled skill via ctx.skills.registerProvider()
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
+lib/pixinsight-mcp/scripts/  # find-masters.mjs, clean-wbpp-intermediates.mjs
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
 scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1
 ```

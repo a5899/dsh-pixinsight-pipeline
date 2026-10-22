@@ -193,7 +193,59 @@ parameter guide, then drives each step via `pi-tool.mjs`.
 | `check_star_quality` / `check_ringing` / `check_sharpness` | Quality gates |
 | `save_preview` / `save_variant` / `load_variant` / `list_variants` | Artifacts |
 
+## Entry protocol: find the master first, do not ask to "just run WBPP"
+
+Every job starts by resolving the master from the material folder. **Never ask the user
+"要不要跑 WBPP" before you have actually looked for an existing master.** The user supplies a
+material folder (`素材文件夹`) holding the raw frames *and* usually the WBPP output; the master
+is normally already there.
+
+### Step 1 — hunt the master (always first)
+
+```
+node <plugin>\lib\pixinsight-mcp\scripts\find-masters.mjs --dir "<素材文件夹>" [--text]
+```
+
+Recursive scan of the folder and its subfolders; returns `verdict`:
+
+| `verdict` | Meaning | Action |
+|---|---|---|
+| `ready` | a usable light master exists | use it, skip WBPP |
+| `only_calibration` | only bias/dark/flat masters | WBPP needed — ask now |
+| `none` | no master-class file | WBPP needed — ask now |
+
+Per candidate it reports `path`, `channelsPresent` (parsed from `FILTER-Ha` / `FILTER-OIII`
+style markers; digits-adjacent letters like `300s` are never read as a band), `sizeBytes`,
+`mtime`. `master/` is searched recursively — the master is often one level down, so a flat
+`ls` is not a search.
+
+### Step 2 — ask only when the hunt proved there is no master
+
+The question must carry the evidence (folder scanned, frames seen, what was found). Silence
+is not consent: a WBPP run on 200 frames is hours.
+
+### Step 3 — WBPP output defaults to the material folder
+
+`-OutputDir` defaults to `<素材文件夹>\wbpp` when omitted. Pass it explicitly so the log states
+the destination; the Step 1 locator then finds the master on the next run.
+
+### Step 4 — after a successful WBPP run, always offer the cleanup
+
+WBPP's tree (`registered/`, `calibrated/`, `debayer/`, `cache/`, `logs/`) is scratch and is
+rebuilt by any re-run. Report its size, **ask** before deleting, then:
+
+```
+node <plugin>\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --dry-run   # size report (default)
+node <plugin>\lib\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs --dir "<素材文件夹>\wbpp" --yes       # delete
+```
+
+It refuses (exit 2) when no **light** master exists to protect, never touches `master/`,
+and never steps outside `--dir`.
+
 ## Auto-run WBPP (preprocessing, headless)
+
+> Read **Entry protocol** above first: WBPP is the fallback when no master exists, not the
+> opening move.
 
 The first stage — turning raw frames into calibrated/registered/integrated masters — can be
 automated too. PixInsight's **WeightedBatchPreprocessing** (WBPP) ships with a **CLI automation
@@ -218,13 +270,14 @@ step-by-step over the bridge; run the official WBPP engine headlessly:
 
 Full failure catalogue and parameter list: [reference/wbpp-automation.md](reference/wbpp-automation.md).
 
-A wrapper ships with the plugin at `scripts/run-wbpp.ps1`. It performs all three steps
-above, verifies the inputs, and then reads the resulting log for the registration
-failures that a "successful" run can hide:
+A wrapper ships with the plugin at `lib/pixinsight-mcp/run-wbpp.ps1`. It performs all three
+steps above, verifies the inputs, and then reads the resulting log for the registration
+failures that a "successful" run can hide. `-OutputDir` defaults to `<InputDir>\wbpp`
+(the material folder) when omitted:
 
 ```
-powershell -ExecutionPolicy Bypass -File <plugin>\scripts\run-wbpp.ps1 `
-  -InputDir "C:\data\lights","C:\data\calib" -OutputDir "C:\data\out" `
+powershell -ExecutionPolicy Bypass -File <plugin>\lib\pixinsight-mcp\run-wbpp.ps1 `
+  -InputDir "C:\data\lights" [-OutputDir "C:\data\lights\wbpp"] `
   [-ExtraParams "debayerOutputMethod=0,integrate=true"] [-StagingDir "C:\temp\pi_wbpp"]
 ```
 

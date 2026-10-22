@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-10-22
+
+WBPP stops being the opening move: the skill now looks for a master first, defaults its
+output into the material folder, and offers to clean up after itself.
+
+### Added
+
+- **`lib/pixinsight-mcp/scripts/find-masters.mjs`** — recursive scan of a material folder that
+  classifies every candidate and returns `verdict: ready | only_calibration | none`, so an
+  existing light master is reused instead of re-stacking the frames. Parses channels from
+  `FILTER-Ha` / `FILTER-OIII` style markers; digit-adjacent letters such as `EXPTIME-300s`
+  are never misread as a band, and `masterFlat` / `masterDark` are never treated as
+  pipeline input.
+- **`lib/pixinsight-mcp/scripts/clean-wbpp-intermediates.mjs`** — reports (default `--dry-run`)
+  or deletes (`--yes`) WBPP's scratch tree (`registered/`, `calibrated/`, `debayer/`,
+  `cache/`, `logs/`). Refuses with exit 2 when no light master exists to protect, and never
+  steps outside `--dir`.
+- **"Entry protocol" section** in `SKILL.md` and `AGENTS.md`: hunt the master, ask about
+  WBPP only when the hunt proved there is none, keep outputs in the material folder, offer
+  the cleanup after a successful run.
+
+### Changed
+
+- **`run-wbpp.ps1` (both copies): `-OutputDir` is now optional**, defaulting to
+  `<first InputDir>\wbpp` — inside the material folder, where `find-masters.mjs` will look
+  next time. Both wrappers print the intermediate footprint and tell the caller to ask
+  before deleting.
+- `README.md` documents the locator, the cleanup script and the new default output path.
+
+### Removed
+
+- **Duplicate WBPP copies under `scripts/`.** `scripts/run-wbpp.ps1`, `scripts/find-masters.mjs`
+  and `scripts/clean-wbpp-intermediates.mjs` were unreferenced second copies — both installers
+  only deploy `lib/pixinsight-mcp/*`. The single source of truth is now `lib/pixinsight-mcp/`,
+  and every doc path was updated to match.
+
 ## [0.2.0] — 2026-10-18
 
 Verified end to end against a live PixInsight 1.9.4 on real deep-sky data

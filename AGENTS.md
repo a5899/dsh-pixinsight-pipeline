@@ -91,10 +91,31 @@ missing, ask the user instead of inventing a profile.
 
 ## 3. WBPP preprocessing (headless, no watcher needed)
 
+**Look for an existing master first** — do not ask the user whether to run WBPP before you
+have checked the material folder:
+
+```powershell
+node "$env:DSH_HOME\pixinsight-mcp\scripts\find-masters.mjs" --dir "<素材文件夹>" --text
+```
+
+`verdict=ready` → use that master and skip WBPP. Only `none` / `only_calibration` justify
+asking the user, and the question must name the folder and what was found.
+
+`-OutputDir` is optional and defaults to `<InputDir>\wbpp`, i.e. inside the material folder:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:DSH_HOME\pixinsight-mcp\run-wbpp.ps1" `
-  -InputDir "<lights dir>" -OutputDir "<out dir>"
+  -InputDir "<素材文件夹>" [-OutputDir "<素材文件夹>\wbpp"]
 ```
+
+After a successful run, report the size of WBPP's scratch tree and **ask** before deleting it:
+
+```powershell
+node "$env:DSH_HOME\pixinsight-mcp\scripts\clean-wbpp-intermediates.mjs" --dir "<素材文件夹>\wbpp" --dry-run
+```
+
+`--dry-run` is the default; `--yes` deletes. It refuses (exit 2) without a light master to
+protect and never touches `master/`.
 
 Do not run WBPP while the watcher instance is busy — it starts a second PixInsight process.
 
