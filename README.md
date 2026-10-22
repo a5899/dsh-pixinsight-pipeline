@@ -133,10 +133,11 @@ cordis.patch.yml             # - insert: id: pixinsight-pipeline, name: dsh-pixi
 AGENTS.md                    # step-by-step PixInsight watcher setup for AI agents
 lib/index.js                 # registers the bundled skill via ctx.skills.registerProvider()
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
-lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit
+lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit, ensure-astap
+lib/pixinsight-mcp/vendor/   # bundled astap_cli.exe (850 KB) + astap_setup.exe (6 MB)
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
 scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1, sync-skill.mjs
-test/                        # contract, smoke, syntax, scripts — run by `npm test`
+test/                        # contract, smoke, syntax, scripts, astap — run by `npm test`
 ```
 
 ## Tests
@@ -145,7 +146,7 @@ test/                        # contract, smoke, syntax, scripts — run by `npm 
 npm test
 ```
 
-Five gates, no PixInsight required:
+Six gates, no PixInsight required:
 
 | Suite | Covers |
 |---|---|
@@ -153,10 +154,41 @@ Five gates, no PixInsight required:
 | `test/smoke.mjs` | 69 bridge operations against a stub PJSR |
 | `test/syntax.mjs` | `node --check` over every ops module **and** toolkit script; pi-tool imports resolve; command table has no duplicates |
 | `test/scripts.mjs` | `find-masters` verdicts and channel parsing, `clean-wbpp-intermediates` dry-run/protect/refuse, `resolve-toolkit` layout detection |
+| `test/astap.mjs` | bundled solver is a real PE; `--check` never writes; config/catalog mismatch caught; catalog identity from file prefix; probe never green on an unexecutable binary |
 | `sync-skill.mjs --check` | the user skill root and the package copy have not drifted |
 
 The last gate exits 0 when the skill root is not installed at all — a plugin-only install is
 legitimate, and `npm test` must not go red on a machine that simply uses the package.
+
+## Headless ASTAP (star catalog solver)
+
+PixInsight's SPCC needs a star catalog; Gaia requires a PI account and ~40 GB, so ASTAP is
+the practical fallback. **The GUI `astap.exe` cannot be scripted** — any invocation that also
+asks for output (`-o`, `-tofits`, `-update`) opens a window and blocks forever. This package
+ships the headless `astap_cli` and verifies it against the catalog on disk:
+
+```powershell
+node lib\pixinsight-mcp\scripts\ensure-astap.mjs --check    # report + verify only
+node lib\pixinsight-mcp\scripts\ensure-astap.mjs           # install solver + repair config
+```
+
+Resolution order for the solver: bundled `vendor/astap_cli.exe` → bundled
+`vendor/astap_setup.exe` (silent Inno Setup extract) → `hnsky.org`. **A bundled install needs
+no network at all.**
+
+The star catalog (~382 MB zipped) is too large for git and npm, so it ships as a release
+asset and is fetched on demand:
+
+<https://github.com/a5899/dsh-pixinsight-pipeline/releases/latest/download/astap-d20-catalog.zip>
+
+What it checks, and why each check exists:
+
+- **catalog identity from the file prefix**, not the suffix — D05/D20/D50/D80 all share
+  `.1476`, so a suffix match says nothing about which database is installed;
+- **config/catalog coherence** — `ref_database=V50` (needs `.1477`) alongside only
+  `d20_*.1476` tiles makes every solve fail while the config looks correct;
+- **a real solve probe** — success requires positive evidence (`Using star database <code>`).
+  A binary that produces no output at all is reported as *unverified*, never as working.
 
 ## Notes / gotchas
 
