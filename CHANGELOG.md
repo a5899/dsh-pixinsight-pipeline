@@ -4,6 +4,65 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-10-23
+
+Silent-failure fixes for the processing tools, found while building an M27 LRGB.
+
+### Why this release exists
+
+Processing M27 end to end surfaced four tools that reported **success while corrupting the
+image or doing nothing at all**. None raised an error, so every downstream stage happily
+built on a broken result. The worst one flattened a colour image to a constant 0.5 field
+(median, min and max all equal, MAD = 0) and the pipeline kept going.
+
+The common thread: `executeOn()` returning without throwing proves nothing. Each fix below
+is paired with an assertion on the pixels, not on the return value.
+
+### Fixed
+
+- **`stagedHistogramStretch` flattened images to a 0.5 constant field.** The midtones value
+  was derived from an inverted MTF formula, so the "stretch" wrote 0.5 everywhere. It now
+  applies a real `HistogramTransformation` and **calibrates the midtones coefficient by
+  bisection** against a filled probe window — `HT` midtones is not the book MTF coefficient
+  (below 0.5 brightens, above 0.5 darkens, 0.5 is identity), so it is measured, not derived.
+  `masStretch` inherits the fix through its fallback path. A MAD-collapse warning is logged.
+- **`masStretch` / `stagedHistogramStretch` destroyed colour data.** The old path ran
+  `PixelMath` with a single expression over a colour view; it now operates through a
+  per-channel `HistogramTransformation` table.
+- **`removeGreen` threw on every call.** It used `SCNR.prototype.MaximumMasking`, which is
+  `undefined` in PJSR (`SCNR.prototype` exposes no constants). Protection method and target
+  colour are now plain integers, with the mapping documented at the call site.
+- **`combineSho` threw on every call.** It assigned `P.channels = []` before filling entries,
+  raising `ChannelCombination.channels(): table length out of range (0)`. The table is now
+  assigned in one go.
+- **`restoreFromClone` silently collapsed colour targets to mono.** `Image.assign()` reduces a
+  3-channel target to 1 channel when the source is mono, after which channel writes fail with
+  `Image.Set(): invalid channel index`. A channel-count mismatch is now refused with an
+  actionable error instead of applied. `save_preview` asserts the same invariant on its temp
+  window.
+- **`save_preview` could not write anywhere on Windows.** The preview directory was
+  interpolated into a PJSR string literal with backslashes, so `D:\astro\x` collapsed to
+  `D:astrox` and the save failed with Win32 error 123. Paths are now forward-slashed.
+
+### Added
+
+- **`probeCatalogs()`** and a `catalogs` section in `capability_report`. SPCC without a Gaia
+  catalogue returns **no error and changes no pixel**; `capability_report` now reports
+  `spccUsable: false` with a reason and logs a warning, instead of listing the process as
+  available.
+- **`test/regressions.mjs`** — 12 assertions over four silent-failure classes plus the
+  catalogue probe. Skips cleanly (exit 0) when PixInsight is not running, so it can live in
+  `npm test`; wired in as `test:regressions`.
+
+### Notes
+
+- These tests need a live PixInsight with the watcher loaded. With PixInsight closed they
+  report `SKIP` rather than failing.
+- `MAD()` in PJSR is the median absolute deviation, which is legitimately 0 when most pixels
+  sit exactly on the median (e.g. a synthetic flat field with a small patch). Do not use it
+  as a universal "image has structure" check — the regression fixture uses `mean > 2×median`
+  for that, and asserts flatness via `max - min`.
+
 ## [0.4.0] — 2026-10-22
 
 Headless ASTAP: the plugin now installs a solver a script can actually drive, and verifies

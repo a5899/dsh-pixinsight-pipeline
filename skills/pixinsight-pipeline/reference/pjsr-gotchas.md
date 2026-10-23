@@ -27,6 +27,55 @@ searchDirectory(dir + '/*.json');       // glob-like listing
 
 **Do NOT use** `DataType_ByteArray` — it's not defined.
 
+## `executeOn()` returning clean proves nothing
+
+The single most expensive lesson of the M27 run. Four processes reported success and
+corrupted the image without raising:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Image becomes a flat 0.5 field | MTF coefficient for `HT.midtones` derived from the wrong formula | calibrate midtones by bisection against a probe window (see below) |
+| `SCNR.protectionMethod(): invalid argument type` | `SCNR.prototype.MaximumMasking` is `undefined` — PJSR exposes no process constants on the prototype | pass plain integers: `protectionMethod` 0–3 (2 = maximum masking), `colorToRemove` 0=Red 1=Green 2=Blue |
+| `ChannelCombination.channels(): table length out of range (0)` | assigning `P.channels = []` before filling entries | assign the whole table at once: `P.channels = [[true,'R'],[true,'G'],[true,'B']]` |
+| `Image.Set(): invalid channel index` later on | `image.assign()` **collapses a colour target to 1 channel when the source is mono** | check `numberOfChannels` before assigning; build colour views channel-by-channel with `setSample` |
+| Preview save fails with Win32 error 123 | backslashes in a PJSR string literal are escapes — `'D:\astro\x'` collapses to `'D:astrox'` | always forward-slash paths before interpolating them into PJSR |
+
+**Rule:** after any process that is supposed to change pixels, assert on the pixels —
+re-read `median` / `min` / `max` and compare against the value before the call. A constant
+field (min == max), an unchanged median, or `MAD == 0` all mean the step silently did nothing
+or destroyed the data. Roll back to a checkpoint rather than compensating downstream.
+
+### Calibrating `HistogramTransformation` midtones
+
+`H` is five rows `[blackPoint, midtones, whitePoint, lowClip, highClip]` for R, G, B, L,
+Alpha. The midtones value is **not** the MTF coefficient from the formula books: measured on
+this build, `0.5` is identity, values **below 0.5 brighten**, above 0.5 darken. Do not derive
+it — bisect it:
+
+```javascript
+// probe: fill a small window with the current median, apply a candidate,
+// read back the median, adjust. 18 iterations converge far tighter than needed.
+var w = new ImageWindow(48, 48, 3, 32, false, true, 'midtones_probe');
+var v = w.mainView;
+v.beginProcess();
+var img = v.image;
+for (var c = 0; c < 3; c++)
+  for (var y = 0; y < 48; y++)
+    for (var x = 0; x < 48; x++)
+      img.setSample(median, x, y, c);
+v.endProcess();
+var P = new HistogramTransformation;
+P.H = [[0, m, 1, 0, 1], [0, m, 1, 0, 1], [0, m, 1, 0, 1],
+       [0, 0.5, 1, 0, 1], [0, 0.5, 1, 0, 1]];
+P.executeOn(v);
+var out = img.median();
+w.forceClose();
+```
+
+`MAD()` is the **median** absolute deviation, so it is legitimately `0` whenever most pixels
+sit exactly on the median (a synthetic flat with a small bright patch, for example). It is a
+good noise/clipping signal on real frames, not a universal "has structure" test.
+
 ## XISF Crop Masks
 XISF files from WBPP contain embedded crop masks. Opening creates MULTIPLE windows:
 ```javascript
