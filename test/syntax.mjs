@@ -104,3 +104,39 @@ if (failed) {
 } else {
   console.log('\nall syntax checks passed');
 }
+
+// The watcher's id ledgers must stay bounded. They were plain arrays that only
+// grew; every poll did ANSWERED_IDS.indexOf(base) per pending command, so a long
+// session ground the 250 ms tick to a halt (heartbeat froze, 1257 commands piled
+// up unattended). A fix that lives only in the runtime copy %DSH_HOME% gets
+// wiped the next time that directory is re-synced from here, so assert it here.
+{
+  const watcher = path.join(root, 'lib', 'pixinsight-mcp', 'pjsr', 'pixinsight-mcp-watcher.js');
+  // Strip comments first: the explanatory comment above the ledger legitimately
+  // quotes the old `ANSWERED_IDS.indexOf(base)` call.
+  const src = fs.readFileSync(watcher, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n');
+  const unbounded = [
+    /ANSWERED_IDS\s*=\s*\[\s*\]/,
+    /DISCARDED_IDS\s*=\s*\[\s*\]/,
+    /ANSWERED_IDS\.push\(/,
+    /DISCARDED_IDS\.push\(/,
+    /ANSWERED_IDS\.indexOf\(/,
+    /DISCARDED_IDS\.indexOf\(/,
+  ].filter((re) => re.test(src));
+  if (unbounded.length) {
+    failed += 1;
+    console.error(
+      `FAIL ledger  pi-tool watcher uses an unbounded id array ` +
+      `(${unbounded.map((r) => r.source).join(', ')}) — the poll loop will stall ` +
+      `in long sessions; use ledgerHas()/markAnswered()/markDiscarded()`,
+    );
+  } else if (!/ID_LEDGER_LIMIT/.test(src)) {
+    failed += 1;
+    console.error('FAIL ledger  pi-tool watcher lost its bounded ID_LEDGER_LIMIT');
+  } else {
+    console.log('ok  ledger   watcher id ledgers are bounded (ID_LEDGER_LIMIT)');
+  }
+}
