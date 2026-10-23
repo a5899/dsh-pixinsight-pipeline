@@ -53,6 +53,7 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
 | PJSR watcher | `pjsr\pixinsight-mcp-watcher.js` | Load in PixInsight (Script > Run Script) |
 | WBPP wrapper | `run-wbpp.ps1` | Headless WBPP automation |
 | Toolkit resolver | `scripts\resolve-toolkit.mjs` | Prints the real toolkit root on this machine |
+| Gaia catalog check | `scripts\ensure-gaia.mjs` | Detects/validates the Gaia catalog; `--check` exits 3 when unusable |
 | Bridge dir | `~/.pixinsight-mcp/bridge/{commands,results,logs}` | Shared filesystem |
 
 ## DSH Quick Start
@@ -99,6 +100,50 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
    frame, or heavily light-polluted data at short exposure **cannot be fixed in
    processing**. Say so and recommend re-acquiring, rather than delivering a
    polished image of artefacts.
+
+3a. **Check the star catalog before any solve or colour calibration.**
+
+   ```powershell
+   node <toolkit>\scripts\ensure-gaia.mjs          # report
+   node <toolkit>\scripts\ensure-gaia.mjs --check  # exit 3 when unusable
+   ```
+
+   Two tools depend on it, and **both fail silently without a catalog** — no
+   exception, no error, and no change to the pixels:
+
+   | Tool | Behaviour with no catalog | Evidence |
+   |---|---|---|
+   | `ImageSolver` | `SolveImage()` returns `true`, **no WCS keyword written** | `hasWCS=false`, keyword count unchanged |
+   | `SPCC` | `executeOn()` returns clean, **every channel mean bit-identical** | before/after means compare equal |
+   | `Gaia` process | `executeGlobal()` returns clean with **0 sources** | `sources=0` |
+
+   Never treat a clean return from these as success. Always assert afterwards:
+   a WCS keyword exists (`CRVAL1`), or the channel means actually moved.
+
+   **What to do when the catalog is missing.** Gaia XPSD files are only
+   distributed behind the PixInsight login (`https://pixinsight.com/dist/`), and
+   they **cannot be registered from a script** — the Gaia process has no
+   `saveSettings()`, and `Settings.writeGlobal()` is rejected with *"The caller
+   process lacks entitlement to perform operation"*. So this is a one-time
+   manual step for the user:
+
+   1. Sign in at `https://pixinsight.com/dist/`, scroll to **XPSD Database Files**.
+   2. Download **Gaia DR3/SP**. Prefer the **small set** unless you shoot very
+      wide fields — the complete set is ~100 GB.
+   3. Keep the `.xpsd` files in one folder **outside** the PixInsight program
+      directory (program updates leave it alone).
+   4. `Processes > Star Catalogs > Gaia > Preferences > Data Release: Gaia DR3/SP
+      > Select > pick the files > OK`.
+   5. Confirm with `ensure-gaia.mjs --verify`.
+
+   **ImageSolver still works without Gaia.** It solves from the image headers
+   (centre RA/Dec, focal length, pixel size) against its built-in catalogs —
+   `PPMXL`, `TYCHO-2`, `BrightStars`, `GaiaDR2`. Only **SPCC** genuinely cannot
+   run without the Gaia database. When SPCC is unavailable, substitute:
+   `linear_fit` with L as reference, then measure background per channel on a
+   clean patch and neutralise with explicit ratios. Say in the report that SPCC
+   was skipped and why — do not silently deliver uncorrected colour.
+
 4. **Drive the pipeline**: use `pi-tool.mjs` per step, in the order below, using the
    parameter guide to set values. Example:
    ```
@@ -486,8 +531,17 @@ the channels are built.
 2. **Brightness matching** — `linear_fit` with **L as the reference**, applied to R, G, B.
 3. **Combine** — ChannelCombination R,G,B → RGB.
 4. **Colour calibration — SPCC.** Pick the R/G/B reference curves for the actual filters.
-   Requires the Gaia DR3/SP database configured. SPCC fixes the brown cast and the
-   anomalous purple stars.
+   Requires the Gaia DR3/SP database configured (see **Step 3a**). SPCC fixes the brown
+   cast and the anomalous purple stars.
+
+   **Check that it actually did something.** With no Gaia catalog, `executeOn()` returns
+   without error and leaves every channel mean bit-identical — a silent no-op. Compare the
+   three channel means before and after; if they are unchanged, SPCC did nothing.
+
+   When Gaia is unavailable, substitute an explicit neutralisation and say so in the
+   report: `linear_fit` with L as reference (step 2 already does this), then measure the
+   per-channel background median on a clean corner patch and scale R/G/B to equal it. Do
+   not claim SPCC was applied when it was not.
 5. **Initial sharpening (BXT)** on RGB: `non_stellar ≈ 0.9`, `stellar ≈ 0.2`, Automatic PSF.
    This tightens galaxy detail and shrinks oversized stars.
 6. **Denoise** — `auto_denoise` on RGB and on L separately (`phase:"linear"`), again gentle.

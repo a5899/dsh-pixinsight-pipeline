@@ -125,6 +125,29 @@ When WBPP does run, `<toolkit>\scripts\clean-wbpp-intermediates.mjs` reports (an
 node "<toolkit>\scripts\clean-wbpp-intermediates.mjs" --dir "C:\data\lights\wbpp" --dry-run
 ```
 
+### Check the star catalog before solving or colour calibration
+
+`ImageSolver` and `SPCC` both need a star catalog, and both **fail silently without one** —
+no exception, and not a single pixel changed. `ImageSolver.SolveImage()` returns `true` while
+writing no WCS keyword; `SPCC.executeOn()` leaves every channel mean bit-identical.
+
+```powershell
+node "<toolkit>\scripts\ensure-gaia.mjs"          # report what PixInsight can see
+node "<toolkit>\scripts\ensure-gaia.mjs" --check  # exit 3 when unusable (CI-friendly)
+node "<toolkit>\scripts\ensure-gaia.mjs" --verify # prove the catalog answers a query
+```
+
+The catalog itself is a **one-time manual step**: Gaia XPSD files are only behind the
+PixInsight login at <https://pixinsight.com/dist/>, and they cannot be registered from a
+script either — the Gaia process has no `saveSettings()`, and `Settings.writeGlobal()` is
+refused with *"The caller process lacks entitlement to perform operation"*. Register them in
+`Processes > Star Catalogs > Gaia > Preferences > Data Release: Gaia DR3/SP > Select`.
+
+ImageSolver keeps working without Gaia (it solves from the image headers against its
+built-in `PPMXL` / `TYCHO-2` / `BrightStars` / `GaiaDR2` catalog list); **SPCC is the one
+that cannot run**, and the skill says to fall back to `linear_fit` plus a measured
+per-channel background neutralisation instead of silently shipping uncorrected colour.
+
 ## Layout
 
 ```
@@ -133,7 +156,7 @@ cordis.patch.yml             # - insert: id: pixinsight-pipeline, name: dsh-pixi
 AGENTS.md                    # step-by-step PixInsight watcher setup for AI agents
 lib/index.js                 # registers the bundled skill via ctx.skills.registerProvider()
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
-lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit, ensure-astap
+lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit, ensure-astap, ensure-gaia
 lib/pixinsight-mcp/vendor/   # bundled astap_cli.exe (850 KB) + astap_setup.exe (6 MB)
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
 scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1, sync-skill.mjs

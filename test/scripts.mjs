@@ -199,6 +199,35 @@ test('resolve-toolkit: --sub on a missing file exits 1', () => {
   assert.equal(code, 1);
 });
 
+// -------------------------------------------------------------------- ensure-gaia
+
+const GAIA = mkScript('ensure-gaia.mjs');
+
+test('ensure-gaia: ships and parses its own --help without touching PixInsight', () => {
+  assert.ok(fs.existsSync(GAIA), 'ensure-gaia.mjs must ship with the plugin');
+  const { code, stdout } = run(GAIA, ['--help']);
+  assert.equal(code, 0);
+  assert.match(stdout, /ensure-gaia/, 'help should describe the tool');
+  assert.match(stdout, /--check/, 'help should document --check');
+});
+
+test('ensure-gaia: rejects an unknown argument instead of guessing', () => {
+  const { code } = run(GAIA, ['--nonsense']);
+  assert.equal(code, 2, 'bad arguments must exit 2');
+});
+
+test('ensure-gaia: --check exits 3 (not 0) when PixInsight is unreachable', () => {
+  // With no live PixInsight the bridge cannot answer, and reporting "usable"
+  // would be exactly the false-green this tool exists to prevent.
+  const { code, stdout } = run(GAIA, ['--check']);
+  if (code === 0) {
+    // A live PixInsight with a real catalog: legitimate pass, nothing to assert.
+    assert.match(stdout, /Gaia is configured/, 'exit 0 must mean it really is usable');
+  } else {
+    assert.equal(code, 3, `expected 3 for "unusable", got ${code}`);
+  }
+});
+
 // ---------------------------------------------------------------------- summary
 
 if (failures.length) {

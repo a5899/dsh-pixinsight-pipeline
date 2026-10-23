@@ -4,6 +4,65 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-10-23
+
+Gaia / ImageSolver configuration guidance, driven by the failure mode this release is
+mostly about: **a clean return from a solve or a colour calibration proves nothing**.
+
+### Why this release exists
+
+Building an M27 LRGB exposed that two flagship tools do nothing at all without a star
+catalog, and say nothing about it:
+
+| Tool | With no catalog | Evidence |
+|---|---|---|
+| `ImageSolver.SolveImage()` | returns `true`, writes **no WCS keyword** | keyword count unchanged, no `CRVAL1` |
+| `SPCC.executeOn()` | returns clean, **every channel mean bit-identical** | before/after means compare equal |
+| `Gaia.executeGlobal()` | returns clean with **0 sources** | `sources == 0` |
+
+A pipeline that trusts these return values ships uncorrected colour while reporting success.
+
+### Added
+
+- **`scripts/ensure-gaia.mjs`** — detects what PixInsight can actually see (`databaseFilePaths`,
+  the ImageSolver catalog list, the selected catalog), and `--verify` **proves** the catalog
+  answers a real query (2° field around a star-dense target must return sources).
+  `--check` exits 3 when unusable, so it works as a CI gate. `--json` for machines.
+  It refuses to report "configured" on a clean-but-empty query.
+- **SKILL.md Step 3a** — check the catalog *before* any solve or colour calibration, with
+  the assert-afterwards rule (a WCS keyword exists, or the channel means moved).
+- **Regression tests** in `test/scripts.mjs`: `--help` parses without touching PixInsight,
+  an unknown argument exits 2, and `--check` never exits 0 unless the catalog is genuinely
+  usable.
+
+### Documented — what cannot be automated
+
+Gaia XPSD files are **only distributed behind the PixInsight login**
+(<https://pixinsight.com/dist/>), so no script can download them. And they **cannot be
+registered from a script either**:
+
+- the Gaia process has **no `saveSettings()`** (`undefined`, verified);
+- `Settings.writeGlobal()` is rejected with *"The caller process lacks entitlement to
+  perform operation"*;
+- `databaseFilePaths` is a **table** whose rows are one-element arrays — assigning
+  `["path", ...]` raises *"expected an array table row definition (row #0)"*;
+- `Gaia.DataRelease_*` constants are **`undefined` at runtime** on both the instance and the
+  constructor, so `dataRelease` must be given a plain integer (0 = best available).
+
+Registration is therefore a documented one-time manual step
+(`Gaia > Preferences > Data Release > Gaia DR3/SP > Select`), and the tool reports the exact
+steps. `--dir` still validates a folder of `.xpsd` files (discovery, row shaping, load
+test), but marks `persisted: false`.
+
+### Notes
+
+- **ImageSolver does not need Gaia.** It solves from image headers against its built-in
+  `PPMXL` / `TYCHO-2` / `BrightStars` / `GaiaDR2` list. **SPCC is the one that cannot run
+  without it**; the skill now says to fall back to `linear_fit` plus a measured per-channel
+  background neutralisation and to state in the report that SPCC was skipped.
+- Complete Gaia set is ~100 GB; the small set covers typical amateur fields. Size the
+  download against the user's free disk before recommending it.
+
 ## [0.4.2] — 2026-10-23
 
 Two more silent failures, found while building an M27 HOO with RGB stars on top of 0.4.1.
