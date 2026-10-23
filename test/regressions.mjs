@@ -15,7 +15,7 @@
 // ============================================================================
 import { createBridgeContext } from '../lib/pixinsight-mcp/agents/ops/bridge.mjs';
 import { removeGreen } from '../lib/pixinsight-mcp/agents/ops/star-handling.mjs';
-import { combineSho } from '../lib/pixinsight-mcp/agents/ops/narrowband.mjs';
+import { combineSho, dynamicBlend } from '../lib/pixinsight-mcp/agents/ops/narrowband.mjs';
 import { restoreFromClone, cloneImage } from '../lib/pixinsight-mcp/agents/ops/image-mgmt.mjs';
 import { stagedHistogramStretch } from '../lib/pixinsight-mcp/agents/ops/stretch.mjs';
 import { probeCatalogs } from '../lib/pixinsight-mcp/agents/ops/tooling.mjs';
@@ -200,8 +200,63 @@ async function main() {
     check('probeCatalogs returns a verdict', false, e.message);
   }
 
+  // === Regression 6: staged HT on a MONO image ---------------------------
+  // HistogramTransformation's H table is [R, G, B, L, Alpha]. A mono image is
+  // driven ONLY by row 3; writing the stretch value into rows 0..2 (correct for
+  // colour) makes a mono stretch a silent no-op — the tool reported success and
+  // the median never moved. Found while building an HOO from H/O masters.
+  console.log('\n[6] stagedHistogramStretch / mono images use the L row');
+  await makeFlat('ht_mono', 1, 0.0068);
+  await ctx.pjsr(`
+    var w = ImageWindow.windowById('ht_mono');
+    var v = w.mainView;
+    v.beginProcess();
+    var img = v.image;
+    for (var y = 8; y < 40; y++)
+      for (var x = 8; x < 40; x++)
+        img.setSample(0.25, x, y);
+    v.endProcess();
+    'OK';
+  `);
+  const monoBefore = parseFloat((await ctx.pjsr(`
+    ImageWindow.windowById('ht_mono').mainView.image.median();
+  `)).outputs?.consoleOutput || '0');
+  try {
+    const monoRes = await stagedHistogramStretch(ctx, 'ht_mono', { targetBackground: 0.12, passes: 2 });
+    const monoAfter = parseFloat((await ctx.pjsr(`
+      ImageWindow.windowById('ht_mono').mainView.image.median();
+    `)).outputs?.consoleOutput || '0');
+    check('mono stretch actually moves the median', monoAfter > monoBefore * 2,
+      `median ${monoBefore} -> ${monoAfter} — mono image was untouched (wrong H row)`);
+    const noopPass = (monoRes.history || []).some((h) => h.noop);
+    check('mono stretch does not report a frozen pass as progress', !noopPass,
+      'a pass moved nothing yet was recorded as success');
+  } catch (e) {
+    check('mono stagedHistogramStretch runs', false, e.message);
+  }
+
+  // === Regression 7: dynamicBlend without SII (HOO) -----------------------
+  // sii_id was mandatory, so an HOO blend failed with
+  // "channel not found: undefined" and forced callers to hand-roll PixelMath.
+  console.log('\n[7] dynamicBlend / HOO has no SII channel');
+  await makeFlat('db_ha', 1, 0.10);
+  await makeFlat('db_o3', 1, 0.20);
+  await makeFlat('db_rgb', 3, 0.10);
+  try {
+    await dynamicBlend(ctx, {
+      rgb_id: 'db_rgb', ha_id: 'db_ha', oiii_id: 'db_o3',
+      weights: { rHa: 1, gHa: 0.35, gO3: 0.65, bO3: 1 }
+    });
+    const m = await median('db_rgb');
+    check('dynamicBlend works with no sii_id', Number.isFinite(m) && m > 0,
+      `median ${m} — blend produced an empty image`);
+  } catch (e) {
+    check('dynamicBlend works with no sii_id', false, e.message);
+  }
+
   await closeAll(['rg_test', 'sho_s', 'sho_h', 'sho_o', 'sho_out',
-    'clsrc', 'cltgt', 'clclone', 'ht_test']);
+    'clsrc', 'cltgt', 'clclone', 'ht_test', 'ht_mono',
+    'db_ha', 'db_o3', 'db_rgb']);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) {

@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-10-23
+
+Two more silent failures, found while building an M27 HOO with RGB stars on top of 0.4.1.
+
+### Fixed
+
+- **`stagedHistogramStretch` was a no-op on mono images.** `HistogramTransformation.H` is
+  `[R, G, B, L, Alpha]`, and a **single-channel image is driven only by row 3** — rows 0–2
+  have no effect at all (measured). 0.4.1 wrote the calibrated midtones into rows 0–2 and
+  left row 3 at identity, which is right for colour but made every *mono* stretch do
+  nothing: the tool reported success, logged three passes, and the median never moved
+  (0.00676 → 0.00676). It now selects the row from `numberOfChannels`. A pass that leaves
+  the median unchanged is also logged as a no-op and stops the loop instead of burning
+  iterations on a frozen image.
+- **`dynamicBlend` required `sii_id`.** An HOO composite has no SII, so the blend died with
+  `channel not found: undefined` and callers had to hand-roll PixelMath. `sii_id` is now
+  optional: SII weights are zeroed, the remaining weights renormalise, and ignoring a
+  non-zero SII weight is logged as a warning.
+
+### Added
+
+- Regression cases **[6]** (mono stretch must move the median and must not record a frozen
+  pass as progress) and **[7]** (HOO blend without `sii_id`). Suite is now 15 assertions.
+
+### Notes
+
+- Restarting PixInsight clears the bridge backlog. If commands pile up in
+  `~/.pixinsight-mcp/bridge/commands` (observed: 1257 stale files after a long session) the
+  watcher can stop draining them; kill PixInsight, clear `commands/` and `results/`, then
+  relaunch. Processed files on disk are unaffected.
+
 ## [0.4.1] — 2026-10-23
 
 Silent-failure fixes for the processing tools, found while building an M27 LRGB.
