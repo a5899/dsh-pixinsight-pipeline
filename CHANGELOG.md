@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-10-23
+
+### Removed — ASTAP
+
+ASTAP solved a problem that turned out not to exist, so it is gone entirely: the installer
+scripts, `ensure-astap.mjs`, the 8 MB of bundled binaries (`vendor/astap_cli.exe`,
+`vendor/astap_setup.exe`), `test/astap.mjs`, and the 381.7 MB `astap-d20-catalog.zip` release
+asset.
+
+**Why.** The premise was "PixInsight's SPCC needs a star catalog, Gaia needs a PI account and
+~40 GB, so an external solver is the practical fallback." Two parts of that were wrong:
+
+1. **ImageSolver never needed an external solver.** It solves from the image headers (centre
+   RA/Dec, effective focal length, pixel size) against catalog servers that ship with
+   PixInsight itself — `availableXPSDServers` exposes `GaiaDR3_XPSD`, `GaiaEDR3_XPSD` and
+   `GaiaDR2_XPSD`, plus `vizierServer` for online lookups. ASTAP was never in that path.
+2. **ASTAP was not wired into the pipeline at all.** It was an offline side-check that wrote
+   `.ini` files in its own directory; nothing in PixInsight ever read them. With `WBPP.js`
+   containing zero ASTAP references, removing it costs the processing pipeline nothing.
+
+Meanwhile it carried real cost: 8 MB of binaries in the package, a 381.7 MB release asset,
+two catalogue-schema traps (D05/D20/D50/D80 all share the `.1476` suffix; `ref_database`
+mismatches fail every solve silently), and a GUI binary that blocks forever on any scripted
+call.
+
+**The remaining real dependency is Gaia for SPCC.** `ensure-gaia.mjs` (added in 0.5.0)
+detects it and reports the manual registration steps; that guidance is unchanged.
+
+### Changed
+
+- Both installers now check the **Gaia** catalog instead of ASTAP, and print the manual
+  `Processes > Star Catalogs > Gaia > Preferences` steps when it is missing.
+- `npm test` no longer runs `test/astap.mjs` — five gates remain.
+- README drops the ASTAP section and the `vendor/` directory listing.
+
 ## [0.5.0] — 2026-10-23
 
 Gaia / ImageSolver configuration guidance, driven by the failure mode this release is

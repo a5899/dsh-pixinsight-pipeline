@@ -1,6 +1,6 @@
 # dsh-pixinsight-pipeline
 
-**A DeepSeek Harness (DSH) plugin that packages the `pixinsight-pipeline` skill** — automated
+**A DeepSeek Harness (DSH) plugin that packages the `pixinsight-pipeline` skill** 閳?automated
 deep-sky astrophotography processing driven from DSH through a file-based IPC bridge into a
 running PixInsight 1.9.4.
 
@@ -12,11 +12,11 @@ It bundles three things so it works as a normal DSH plugin:
    headless **WBPP** wrapper (`lib/pixinsight-mcp/run-wbpp.ps1`).
 
 ```
-DSH agent ── pi-tool.mjs ──> ~/.pixinsight-mcp/bridge/commands/{id}.json
-                                   │
-       PixInsight ── pixinsight-mcp-watcher.js (PJSR poll loop)
-                                   │  reads command, runs PJSR, writes result
-                                   ▼
+DSH agent 閳光偓閳光偓 pi-tool.mjs 閳光偓閳光偓> ~/.pixinsight-mcp/bridge/commands/{id}.json
+                                   閳?
+       PixInsight 閳光偓閳光偓 pixinsight-mcp-watcher.js (PJSR poll loop)
+                                   閳? reads command, runs PJSR, writes result
+                                   閳?
                            ~/.pixinsight-mcp/bridge/results/{id}.json
 ```
 
@@ -25,7 +25,7 @@ DSH agent ── pi-tool.mjs ──> ~/.pixinsight-mcp/bridge/commands/{id}.json
 This package is only the **director** side. Before calling `pi-tool`, PixInsight must be
 running with the bundled **watcher script** loaded, otherwise every call fails with
 `PixInsight process not found`. The exact launch / verify / drive / shutdown steps are in
-**[AGENTS.md](AGENTS.md)** — start there, then read `skills/pixinsight-pipeline/SKILL.md`
+**[AGENTS.md](AGENTS.md)** 閳?start there, then read `skills/pixinsight-pipeline/SKILL.md`
 for the processing order.
 
 ## Requirements
@@ -33,7 +33,7 @@ for the processing order.
 | Item | Notes |
 |---|---|
 | PixInsight | 1.9.4+ with **BXT / NXT / SXT** installed (RC Astro modules) |
-| Node.js | ≥ 20 |
+| Node.js | 閳?20 |
 | DSH | profile with `dsh.profile.bundles` (desktop/web) |
 | OS | Windows primarily (watcher `#include` paths point at `C:/Program Files/PixInsight/src/scripts/AdP/*`). macOS/Linux: adjust those paths. |
 
@@ -74,7 +74,7 @@ instead. It prints the resolved `toolkit` root and per-file checks; every `<tool
 below means that root.
 
 1. Open PixInsight and load the watcher:
-   `Script > Run Script File…` → `<toolkit>\pjsr\pixinsight-mcp-watcher.js`.
+   `Script > Run Script File閳ヮ泦 閳?`<toolkit>\pjsr\pixinsight-mcp-watcher.js`.
    Keep PixInsight open. The watcher logs `PixInsight MCP Watcher v0.2.0` and polls every 250 ms.
 2. Verify the bridge:
    ```powershell
@@ -94,7 +94,7 @@ $args = Join-Path $env:TEMP 'piargs.json'
 node "<toolkit>\scripts\pi-tool.mjs" run_nxt "@$args"
 ```
 
-Headless WBPP (preprocessing) does not need the watcher — run the official automation mode.
+Headless WBPP (preprocessing) does not need the watcher 閳?run the official automation mode.
 The wrapper in this package encodes the quoting rules that make it work (all parameters
 comma-joined inside one quoted `-r=` value, `WBPP.js` staged at a space-free path).
 `-OutputDir` is optional and defaults to `<first InputDir>\wbpp`, i.e. inside the material folder:
@@ -127,7 +127,7 @@ node "<toolkit>\scripts\clean-wbpp-intermediates.mjs" --dir "C:\data\lights\wbpp
 
 ### Check the star catalog before solving or colour calibration
 
-`ImageSolver` and `SPCC` both need a star catalog, and both **fail silently without one** —
+`ImageSolver` and `SPCC` both need a star catalog, and both **fail silently without one** 閳?
 no exception, and not a single pixel changed. `ImageSolver.SolveImage()` returns `true` while
 writing no WCS keyword; `SPCC.executeOn()` leaves every channel mean bit-identical.
 
@@ -139,7 +139,7 @@ node "<toolkit>\scripts\ensure-gaia.mjs" --verify # prove the catalog answers a 
 
 The catalog itself is a **one-time manual step**: Gaia XPSD files are only behind the
 PixInsight login at <https://pixinsight.com/dist/>, and they cannot be registered from a
-script either — the Gaia process has no `saveSettings()`, and `Settings.writeGlobal()` is
+script either 閳?the Gaia process has no `saveSettings()`, and `Settings.writeGlobal()` is
 refused with *"The caller process lacks entitlement to perform operation"*. Register them in
 `Processes > Star Catalogs > Gaia > Preferences > Data Release: Gaia DR3/SP > Select`.
 
@@ -156,11 +156,10 @@ cordis.patch.yml             # - insert: id: pixinsight-pipeline, name: dsh-pixi
 AGENTS.md                    # step-by-step PixInsight watcher setup for AI agents
 lib/index.js                 # registers the bundled skill via ctx.skills.registerProvider()
 lib/pixinsight-mcp/          # bridge toolkit (pi-tool CLI, PJSR watcher, WBPP wrapper)
-lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit, ensure-astap, ensure-gaia
-lib/pixinsight-mcp/vendor/   # bundled astap_cli.exe (850 KB) + astap_setup.exe (6 MB)
+lib/pixinsight-mcp/scripts/  # find-masters, clean-wbpp-intermediates, resolve-toolkit, ensure-gaia
 skills/pixinsight-pipeline/  # SKILL.md + reference/*.md
 scripts/                     # install-as-plugin.ps1, install-into-dsh.ps1, sync-skill.mjs
-test/                        # contract, smoke, syntax, scripts, astap — run by `npm test`
+test/                        # contract, smoke, syntax, scripts - run by `npm test`
 ```
 
 ## Tests
@@ -169,56 +168,24 @@ test/                        # contract, smoke, syntax, scripts, astap — run b
 npm test
 ```
 
-Six gates, no PixInsight required:
+Five gates, no PixInsight required:
 
 | Suite | Covers |
 |---|---|
 | `test/contract.mjs` | skill provider contract (rank, locator, frontmatter) |
 | `test/smoke.mjs` | 69 bridge operations against a stub PJSR |
 | `test/syntax.mjs` | `node --check` over every ops module **and** toolkit script; pi-tool imports resolve; command table has no duplicates |
-| `test/scripts.mjs` | `find-masters` verdicts and channel parsing, `clean-wbpp-intermediates` dry-run/protect/refuse, `resolve-toolkit` layout detection |
-| `test/astap.mjs` | bundled solver is a real PE; `--check` never writes; config/catalog mismatch caught; catalog identity from file prefix; probe never green on an unexecutable binary |
+| `test/scripts.mjs` | `find-masters` verdicts and channel parsing, `clean-wbpp-intermediates` dry-run/protect/refuse, `resolve-toolkit` layout detection, `ensure-gaia` never green on an unusable catalog |
 | `sync-skill.mjs --check` | the user skill root and the package copy have not drifted |
-
-The last gate exits 0 when the skill root is not installed at all — a plugin-only install is
+The last gate exits 0 when the skill root is not installed at all 閳?a plugin-only install is
 legitimate, and `npm test` must not go red on a machine that simply uses the package.
-
-## Headless ASTAP (star catalog solver)
-
-PixInsight's SPCC needs a star catalog; Gaia requires a PI account and ~40 GB, so ASTAP is
-the practical fallback. **The GUI `astap.exe` cannot be scripted** — any invocation that also
-asks for output (`-o`, `-tofits`, `-update`) opens a window and blocks forever. This package
-ships the headless `astap_cli` and verifies it against the catalog on disk:
-
-```powershell
-node lib\pixinsight-mcp\scripts\ensure-astap.mjs --check    # report + verify only
-node lib\pixinsight-mcp\scripts\ensure-astap.mjs           # install solver + repair config
-```
-
-Resolution order for the solver: bundled `vendor/astap_cli.exe` → bundled
-`vendor/astap_setup.exe` (silent Inno Setup extract) → `hnsky.org`. **A bundled install needs
-no network at all.**
-
-The star catalog (~382 MB zipped) is too large for git and npm, so it ships as a release
-asset and is fetched on demand:
-
-<https://github.com/a5899/dsh-pixinsight-pipeline/releases/latest/download/astap-d20-catalog.zip>
-
-What it checks, and why each check exists:
-
-- **catalog identity from the file prefix**, not the suffix — D05/D20/D50/D80 all share
-  `.1476`, so a suffix match says nothing about which database is installed;
-- **config/catalog coherence** — `ref_database=V50` (needs `.1477`) alongside only
-  `d20_*.1476` tiles makes every solve fail while the config looks correct;
-- **a real solve probe** — success requires positive evidence (`Using star database <code>`).
-  A binary that produces no output at all is reported as *unverified*, never as working.
 
 ## Notes / gotchas
 
 - `pi-tool`'s `save_preview` / `save_variant` use **forward-slash** paths; Windows backslash
   paths get their `\U` etc. eaten inside PJSR strings.
 - `ImageWindow.open()` returns an **array**; use `wins[0].mainView`.
-- PixInsight is memory-hungry — call `w.purge()` between heavy steps and close intermediates.
+- PixInsight is memory-hungry 閳?call `w.purge()` between heavy steps and close intermediates.
 - The watcher runs in PixInsight's PJSR engine; `Ctrl+F11` (or a `shutdown` sentinel file in
   the bridge dir) stops it.
 - Data processed with this plugin is **local-only**; never upload the user's raw frames.
@@ -232,4 +199,4 @@ What it checks, and why each check exists:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT 閳?see [LICENSE](LICENSE).

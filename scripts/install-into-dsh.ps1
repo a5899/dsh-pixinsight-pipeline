@@ -46,32 +46,26 @@ New-Item -ItemType Directory -Force -Path $toolkitDst | Out-Null
 Copy-Item (Join-Path $pkg 'lib\pixinsight-mcp\*') $toolkitDst -Recurse -Force
 Ok "已部署桥接 CLI 到 $toolkitDst"
 
-# --- ASTAP / star catalog ------------------------------------------------
-# PixInsight's SPCC needs a star catalog. Gaia needs a PI account and ~40 GB, so ASTAP is
-# the practical fallback. Only the headless astap_cli is usable from a script: the GUI
-# astap.exe opens a window and blocks forever on any solve/convert call.
-# The installer tries to fetch a headless solver, reuses an existing catalog, then
-# re-verifies. It never downloads a catalog (400 MB - several GB) and never claims a
-# success it cannot prove.
-$ensure = Join-Path $toolkitDst 'scripts\ensure-astap.mjs'
-if (Test-Path $ensure) {
-    Info 'ASTAP: checking headless solver + star catalog...'
+# --- Gaia star catalog ---------------------------------------------------
+# ImageSolver and SPCC both need a star catalog, and both fail SILENTLY
+# without one (clean return, not a single pixel changed). The catalog itself
+# is only distributed behind the PixInsight login and cannot be registered
+# from a script, so this step detects the state and prints the manual steps.
+$ensureGaia = Join-Path $toolkitDst 'scripts\ensure-gaia.mjs'
+if (Test-Path $ensureGaia) {
+    Info 'Gaia: checking star catalog...'
     try {
-        $astap = (& node $ensure --json 2>$null | Out-String) | ConvertFrom-Json
-        if ($astap.ok) {
-            Ok "ASTAP 就绪：$($astap.summary)"
-            $astap.steps | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
+        $gaia = (& node $ensureGaia --json 2>$null | Out-String) | ConvertFrom-Json
+        if ($gaia.detection.ok -and $gaia.detection.pi.databaseFilePaths.Count -gt 0) {
+            Ok "Gaia 星表已配置（$($gaia.detection.pi.databaseFilePaths.Count) 个文件）"
         } else {
-            Write-Host "[warn ] ASTAP 未就绪：$($astap.summary)" -ForegroundColor Yellow
-            foreach ($s in $astap.steps) { Write-Host "        ok: $s" -ForegroundColor DarkGray }
-            if ($astap.needsUserAction) {
-                Write-Host "        需要手动完成：$($astap.needsUserAction.what)" -ForegroundColor Yellow
-                $astap.needsUserAction.manualSteps | ForEach-Object { Write-Host "          - $_" -ForegroundColor DarkGray }
-            }
-            Write-Host "        复检：node `"$ensure`" --check --test-image <一张真实图像>" -ForegroundColor DarkGray
+            Write-Host "[warn ] Gaia 星表未配置：SPCC 会静默失效，ImageSolver 仍可用内置星表" -ForegroundColor Yellow
+            Write-Host "        手动安装：Processes > Star Catalogs > Gaia > Preferences" -ForegroundColor DarkGray
+            Write-Host "                  > Data Release: Gaia DR3/SP > Select 选择 .xpsd 文件" -ForegroundColor DarkGray
+            Write-Host "        复检：node `"$ensureGaia`" --verify" -ForegroundColor DarkGray
         }
     } catch {
-        Write-Host "[warn ] ASTAP 检测失败（不影响技能安装）：$($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "[warn ] Gaia 检测失败（不影响技能安装）：$($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
 
