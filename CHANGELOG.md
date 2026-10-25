@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-10-25
+
+### Fixed - Gaia verification reported a working catalog as unusable
+
+`ensure-gaia.mjs --verify` returned "NO SOURCES - catalog not usable" and
+`--check` exited 3 on a machine where the Gaia DR3/SP catalog was correctly
+installed and answering queries. Two independent bugs, either of which alone was
+enough to produce a false negative:
+
+1. **It only ever queried release 0.** The code used
+   `g.dataRelease = 0` ("best available") and the comment claimed the
+   `DataRelease_*` constants do not exist at runtime. They do, on the
+   prototype: `DataRelease_BestAvailable=0, DataRelease_2=1, DataRelease_E3=2,
+   DataRelease_3=3, DataRelease_3_SP=4`. PixInsight does **not** persist the
+   "Data release" selection, so every fresh session starts at 3 (DR3/EDR3) and a
+   catalog registered in the DR3/SP slot is invisible unless 4 is set
+   explicitly. `verify()` now tries DR3/SP first, then DR3, EDR3, DR2 and
+   best-available, and reports which release answered.
+2. **The usability test used the wrong signal.** It required
+   `databaseFilePaths.length > 0`, but on a *fresh* `Gaia` instance that array
+   is always empty - the process resolves its catalog list only *during*
+   `executeGlobal()`. So the gate could never pass, regardless of the actual
+   catalog. Usability is now decided solely by a positive query result.
+
+Also fixed: `verify()` now sets `command`, `magnitudeLow/High`,
+`sourceLimit` and disables `generateTextOutput`, without which
+`executeGlobal()` fails silently and floods the Process Console.
+
+### Changed - catalog discovery and reporting
+
+`ensure-gaia.mjs` now searches `D:/Gaia DR3&SP (small set)` (where the DR3/SP
+small set actually lives) in addition to the previous locations, and its report
+distinguishes "files present on disk but not registered" from "nothing
+downloaded". The fresh-instance path count is labelled
+"none (resolved at execution time)" instead of the misleading "none".
+
+### Changed - documentation
+
+The Gaia section of `SKILL.md` and `tools/TOOLS-pixinsight.md` previously stated
+that the catalog "cannot be registered from a script" and that only the GUI works.
+That conclusion was wrong - it came from the false negative above. Both now
+document the verified facts: the `DataRelease_*` values, the
+`dataRelease = 4` requirement, the empty-`databaseFilePaths` trap, the
+`<release>DatabaseFilePath%02d` settings keys, and the need to
+**double-click** the Gaia Preferences wrench (a single click does nothing).
+
 ## [0.6.0] — 2026-10-23
 
 ### Removed — ASTAP

@@ -120,21 +120,47 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
    Never treat a clean return from these as success. Always assert afterwards:
    a WCS keyword exists (`CRVAL1`), or the channel means actually moved.
 
+   **A catalog registered under DR3/SP needs `dataRelease` forced to 4.**
+   PixInsight does **not** persist the `Data release` selection: every fresh
+   session starts at `dataRelease = 3` (DR3/EDR3). A DR3/SP catalog is therefore
+   invisible unless you set it explicitly. Verified constants, on the prototype:
+   `DataRelease_BestAvailable=0, DataRelease_2=1, DataRelease_E3=2,
+   DataRelease_3=3, DataRelease_3_SP=4`.
+
+   ```javascript
+   var g = new Gaia;
+   g.dataRelease = 4;              // DR3/SP — required for a DR3/SP catalog
+   g.command    = "search";        // without this, executeGlobal() fails silently
+   g.centerRA   = 299.93;
+   g.centerDec  = 22.78;
+   g.radius     = 2.0;
+   g.magnitudeLow = 0; g.magnitudeHigh = 20; g.sourceLimit = 50;
+   g.verbosity = 0; g.generateTextOutput = false;
+   g.executeGlobal();
+   // success = g.isValid === true && g.sources.length > 0
+   ```
+
+   **Never judge availability by `g.databaseFilePaths`.** On a fresh instance it
+   is always `[]`; the paths are loaded only *during* `executeGlobal()` (and then
+   read 4). Only a real query proves the catalog works.
+
    **What to do when the catalog is missing.** Gaia XPSD files are only
    distributed behind the PixInsight login (`https://pixinsight.com/dist/`), and
-   they **cannot be registered from a script** — the Gaia process has no
-   `saveSettings()`, and `Settings.writeGlobal()` is rejected with *"The caller
-   process lacks entitlement to perform operation"*. So this is a one-time
-   manual step for the user:
+   registering them is a one-time manual GUI step:
 
-   1. Sign in at `https://pixinsight.com/dist/`, scroll to **XPSD Database Files**.
-   2. Download **Gaia DR3/SP**. Prefer the **small set** unless you shoot very
-      wide fields — the complete set is ~100 GB.
-   3. Keep the `.xpsd` files in one folder **outside** the PixInsight program
-      directory (program updates leave it alone).
-   4. `Processes > Star Catalogs > Gaia > Preferences > Data Release: Gaia DR3/SP
-      > Select > pick the files > OK`.
-   5. Confirm with `ensure-gaia.mjs --verify`.
+   1. If the files are already on disk, **skip to step 4** — `ensure-gaia.mjs`
+      finds them and names the exact folder/files to select.
+   2. Otherwise sign in at `https://pixinsight.com/dist/`, scroll to
+      **XPSD Database Files**.
+   3. Download **Gaia DR3/SP**. Prefer the **small set** unless you shoot very
+      wide fields — the complete set is ~100 GB, the small set is 4 files /
+      **11.11 GB** with 34.4 M sources and BP/RP mean spectra.
+   4. `Processes > Star Catalogs > Gaia` → **double-click** the wrench at the
+      bottom right (single click does nothing) → `Data release`: **Gaia DR3/SP**
+      → `Select` → pick all `.xpsd` files → OK.
+   5. Confirm with `ensure-gaia.mjs --verify`; it tries DR3/SP first and reports
+      which release answered. **A source count of 0 means it is not usable**,
+      no matter how clean the call looked.
 
    **ImageSolver still works without Gaia.** It solves from the image headers
    (centre RA/Dec, focal length, pixel size) against its built-in catalogs —

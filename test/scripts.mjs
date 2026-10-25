@@ -228,6 +228,48 @@ test('ensure-gaia: --check exits 3 (not 0) when PixInsight is unreachable', () =
   }
 });
 
+test('ensure-gaia: verify() tries the DR3/SP slot, not just best-available', () => {
+  // Regression for 0.6.1: verify() queried only dataRelease 0 and gated
+  // usability on databaseFilePaths.length, which is *always* 0 on a fresh Gaia
+  // instance. A correctly installed DR3/SP catalog was therefore reported as
+  // unusable. Guard both halves so the false negative cannot come back.
+  const src = fs.readFileSync(GAIA, 'utf8');
+
+  assert.match(src, /dr3sp:\s*4/, 'the DR3/SP dataRelease value (4) must be present');
+  assert.match(
+    src,
+    /order\s*=\s*\[\s*DR\.dr3sp/,
+    'verify() must try DR3/SP first — a fresh session starts at DR3',
+  );
+  // Usability must come from the query result, never from the path list.
+  assert.doesNotMatch(
+    src,
+    /const usable = paths\.length\s*>/,
+    'usable must not be gated on databaseFilePaths (always empty per instance)',
+  );
+  assert.match(
+    src,
+    /const usable = !!verification && verification\.sources > 0/,
+    'usable must be decided by a positive query result',
+  );
+});
+
+test('ensure-gaia: verify() sets the parameters executeGlobal() silently needs', () => {
+  const src = fs.readFileSync(GAIA, 'utf8');
+  for (const required of ['command', 'magnitudeLow', 'magnitudeHigh', 'sourceLimit']) {
+    assert.match(
+      src,
+      new RegExp(`g\\.${required}\\s*=`),
+      `verify() must set g.${required} or the query fails silently`,
+    );
+  }
+  assert.match(
+    src,
+    /generateTextOutput\s*=\s*false/,
+    'verify() must disable text output to avoid console spam',
+  );
+});
+
 // ---------------------------------------------------------------------- summary
 
 if (failures.length) {
