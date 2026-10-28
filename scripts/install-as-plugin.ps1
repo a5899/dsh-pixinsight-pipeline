@@ -83,18 +83,44 @@ Ok "已部署桥接 CLI 到 $toolkitDst"
 $ensureGaia = Join-Path $toolkitDst 'scripts\ensure-gaia.mjs'
 if (Test-Path $ensureGaia) {
     Info '检查 Gaia 星表...'
-    try {
-        $gaia = (& node $ensureGaia --json 2>$null | Out-String) | ConvertFrom-Json
-        if ($gaia.detection.ok -and $gaia.detection.pi.databaseFilePaths.Count -gt 0) {
-            Ok "Gaia 星表已配置（$($gaia.detection.pi.databaseFilePaths.Count) 个文件）"
+    # 判定星表可用性时的三个坑，都在这里绕开：
+    #  1) detection.pi.databaseFilePaths 在新建的 Gaia 实例上**永远是空表**
+    #     （星表在 executeGlobal() 时才解析），不能当判据。
+    #  2) 只传 --json **不会**跑验证（wantsVerify 不含 args.json），
+    #     verification 恒为 null。必须 --check --json 一起传。
+    #  3) 连不上 PI 时返回 { ok: false, reason }，没有 detection 字段。
+    # 唯一可信判据：verification.sources 实测返回的源数。
+    $gaia = $null
+    $gaiaOut = (& node $ensureGaia --check --json 2>$null | Out-String)
+    try { $gaia = $gaiaOut | ConvertFrom-Json } catch { $gaia = $null }
+    if ($null -eq $gaia) {
+        Write-Host '[warn ] Gaia 检测未返回可解析的结果（不影响插件安装）' -ForegroundColor Yellow
+    } elseif ($gaia.ok -eq $true) {
+        if ($gaia.verification.sources -gt 0) {
+            $rel = 'DR' + $gaia.verification.dr
+            $np = $gaia.verification.nPaths
+            $sp = if ($gaia.verification.hasMeanSpectrum) { '，含 BP/RP 均值谱，SPCC 可用' } else { '' }
+            Ok "Gaia 星表可用（$rel，$np 个文件，实测返回 $($gaia.verification.sources) 颗源$sp）"
         } else {
-            Write-Host "[warn ] Gaia 星表未配置：SPCC 会静默失效，ImageSolver 仍可用内置星表" -ForegroundColor Yellow
-            Write-Host "        手动安装：Processes > Star Catalogs > Gaia > Preferences" -ForegroundColor DarkGray
-            Write-Host "                  > Data Release: Gaia DR3/SP > Select 选择 .xpsd 文件" -ForegroundColor DarkGray
-            Write-Host "        复检：node `"$ensureGaia`" --verify" -ForegroundColor DarkGray
+            Write-Host '[warn ] Gaia 星表未就绪：SPCC 会静默失效，ImageSolver 仍可用内置星表' -ForegroundColor Yellow
+            Write-Host '        安装：Processes > Star Catalogs > Gaia > Preferences' -ForegroundColor DarkGray
+            Write-Host '              > Data Release: Gaia DR3/SP > Select 选择 .xpsd 文件' -ForegroundColor DarkGray
+            Write-Host ('        复检：node ' + [char]96 + "$ensureGaia" + [char]96 + ' --verify') -ForegroundColor DarkGray
         }
-    } catch {
-        Write-Host "[warn ] Gaia 检测失败（不影响插件安装）：$($_.Exception.Message)" -ForegroundColor Yellow
+    } else {
+        # 连不上 PixInsight：这不等于星表没装。退到磁盘上找 .xpsd。
+        $found = @(Get-ChildItem -Path 'D:\', 'C:\' -Filter 'gdr3sp-*.xpsd' -Recurse -Depth 3 -ErrorAction SilentlyContinue)
+        if ($found.Count -gt 0) {
+            $mb = [math]::Round((($found | Measure-Object Length -Sum).Sum / 1MB), 0)
+            Ok "Gaia DR3/SP 星表在磁盘上（$($found.Count) 个文件，$mb MB）：$($found[0].DirectoryName)"
+            Write-Host '        PixInsight 未运行，无法确认是否已登记。启动后执行：' -ForegroundColor DarkGray
+            Write-Host ('        node ' + [char]96 + "$ensureGaia" + [char]96 + ' --check') -ForegroundColor DarkGray
+        } else {
+            Write-Host '[warn ] 未找到 Gaia DR3/SP 星表：SPCC 会静默失效' -ForegroundColor Yellow
+            Write-Host '        下载：PixInsight 网站 > Downloads > Gaia DR3/SP' -ForegroundColor DarkGray
+            Write-Host '        安装：Processes > Star Catalogs > Gaia > Preferences' -ForegroundColor DarkGray
+            Write-Host '              > Data Release: Gaia DR3/SP > Select 选择 .xpsd 文件' -ForegroundColor DarkGray
+        }
     }
 }
 

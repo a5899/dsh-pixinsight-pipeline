@@ -4,6 +4,55 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-10-28
+
+### Fixed - the installer called a working Gaia catalog "not configured"
+
+Running `install-as-plugin.ps1` on a machine with a verified-working Gaia
+DR3/SP catalog printed
+
+```
+[warn ] Gaia 星表未配置：SPCC 会静默失效
+```
+
+Three separate reasons, each of which alone produced that false negative:
+
+1. **`databaseFilePaths` was used as the verdict.** It is *always empty on a
+   freshly constructed Gaia instance* — the catalog is resolved at
+   `executeGlobal()` time. This is documented in `ensure-gaia.mjs` and was
+   already the subject of the 0.6.1 fix in `verify()`; the installer had been
+   left on the old criterion.
+
+2. **`--json` on its own does not verify.** `wantsVerify` was
+   `args.verify || args.dir || args.check`, so `ensure-gaia --json` emitted
+   `"verification": null`. The installer read `verification.sources`, saw
+   nothing, and concluded the catalog was unusable.
+
+3. **A stopped PixInsight was reported as a broken catalog.** `ensure-gaia`
+   returns `{ ok: false, reason }` when it cannot reach the bridge — there is
+   no `detection` field at all — but the installer only checked
+   `detection.ok` and fell through to "not configured".
+
+The verdict now comes from a real query (`--check --json`, whose
+`verification.sources` must be positive) and prints how many sources came back.
+When PixInsight is not running the installer says so and falls back to an
+on-disk scan for `gdr3sp-*.xpsd`, rather than claiming the catalog is missing:
+
+```
+[   ok ] Gaia 星表在磁盘上（4 个文件，11379 MB）：D:\Gaia DR3&SP (small set)
+        PixInsight 未运行，无法确认是否已登记。启动后执行：
+        node ".../ensure-gaia.mjs" --check
+```
+
+`ensure-gaia.mjs` itself now treats `--json` as implying verification, so the
+`verification: null` trap cannot resurface for any other caller.
+
+### Tests
+
+Two new cases (scripts 18, 19): `--json` must appear in the `wantsVerify`
+expression, and the installer must gate on `verification.sources -gt 0` while
+never reading `databaseFilePaths.Count` as a health signal.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added - `shared_span_stretch`: one white point for every channel

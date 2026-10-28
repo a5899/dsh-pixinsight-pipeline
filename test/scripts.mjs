@@ -202,6 +202,7 @@ test('resolve-toolkit: --sub on a missing file exits 1', () => {
 // -------------------------------------------------------------------- ensure-gaia
 
 const GAIA = mkScript('ensure-gaia.mjs');
+const INSTALLER = path.join(root, 'scripts', 'install-as-plugin.ps1');
 
 test('ensure-gaia: ships and parses its own --help without touching PixInsight', () => {
   assert.ok(fs.existsSync(GAIA), 'ensure-gaia.mjs must ship with the plugin');
@@ -269,6 +270,47 @@ test('ensure-gaia: verify() sets the parameters executeGlobal() silently needs',
     'verify() must disable text output to avoid console spam',
   );
 });
+
+test('ensure-gaia: --json alone asks for machine-readable output, so it verifies', () => {
+  // Regression for 0.7.1: wantsVerify was `args.verify || args.dir || args.check`,
+  // so `--json` printed `verification: null`. The installer read that field, saw
+  // nothing, and reported a working catalog as "not configured" -- exactly the
+  // false negative the previous test was written to prevent.
+  const src = fs.readFileSync(GAIA, 'utf8');
+  assert.match(
+    src,
+    /const wantsVerify\s*=\s*[^;]*args\.json/,
+    '--json must imply verification, or verification stays null in JSON output',
+  );
+});
+
+test('install-as-plugin: Gaia verdict comes from a query, not an empty path list', () => {
+  // The installer must not gate on databaseFilePaths (always empty on a fresh
+  // Gaia instance) and must pass --check so verification actually runs.
+  const src = fs.readFileSync(INSTALLER, 'utf8');
+  assert.match(
+    src,
+    /--check --json/,
+    'installer must pass --check with --json, otherwise verification is null',
+  );
+  assert.doesNotMatch(
+    src,
+    /detection\.pi\.databaseFilePaths\.Count -gt 0/,
+    'installer must not decide Gaia health from databaseFilePaths.Count',
+  );
+  assert.match(
+    src,
+    /verification\.sources -gt 0/,
+    'installer must decide Gaia health from the verified source count',
+  );
+  // A stopped PixInsight must not be reported as an unconfigured catalog.
+  assert.match(
+    src,
+    /Get-ChildItem[^\n]*gdr3sp-\*\.xpsd/,
+    'installer must fall back to an on-disk scan when PixInsight is unreachable',
+  );
+});
+
 
 // ---------------------------------------------------------------------- summary
 
