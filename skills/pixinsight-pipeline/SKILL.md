@@ -218,6 +218,7 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
 | `ghs_stretch` | `{"view_id","D":0.5,"b":0.0,"SP":0.0,"LP":0.0,"HP":1.0,"use_native":false}` | GHS (native module or PixelMath fallback) |
 | `staged_ht_stretch` | `{"view_id","target_background":0.25,"passes":4}` | Two-plus-stage HT — avoids histogram gaps |
 | `channel_ht_stretch` | `{"view_id","channel":0\|1\|2\|null,"target_median":0.25}` | Per-channel HT (SHO channel balancing) |
+| `shared_span_stretch` | `{"view_id","target_median":0.22,"sigma":2.8,"percentile":0.9995,"channels":[0,1,2]}` | **RGB composites (HOO/SHO/LRGB): one span for all channels** |
 | `arcsinh_stretch` | `{"view_id","stretch":10,"black_point":0}` | Arcsinh — preserves star colour |
 | `seti_stretch` | `{"view_id","target_median":0.25}` | Seti statistical stretch |
 | `linear_fit` | `{"reference_id","target_id"}` | LinearFit target → reference (channel levelling) |
@@ -254,6 +255,8 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
 | `auto_denoise` | same + applies | Measure → plan → apply in one call |
 | `apply_denoise` | `{"view_id","denoise":0.6,"detail":0.15}` | Force a specific strength |
 | `run_nxt` | `{"view_id","denoise"}` | NXT, or TGVDenoise when NXT is absent (reports which) |
+| `mlt_denoise` | `{"view_id","amount":1.0,"threshold":3.0,"layers":5}` | MLT with the correct noise controls (see gotcha below) |
+| `measure_denoise_effect` | `{"view_id","prev":<earlier result>}` | **Proof gate**: noise must drop >=20%, signal stay within ±2% |
 | `run_bxt` | `{"view_id","correct_only":true,"non_stellar":0.5,"stellar":0.2,"psf_fwhm":3.5}` | BXT, or Deconvolution RL when absent |
 
 **Everything else:**

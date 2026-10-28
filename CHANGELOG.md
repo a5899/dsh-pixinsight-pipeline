@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-28
+
+### Added - `shared_span_stretch`: one white point for every channel
+
+Stretching the channels of a composite with independently chosen white points
+gives the weaker channel a smaller span and therefore a **larger gain on the
+same noise**. Measured on M27 HOO (2026-10-28): the OIII span came out at 62%
+of Hα, so G/B were stretched 366x against H's 230x — 59% more gain on identical
+noise, which reads as colour speckle — and the R/G ratio landed at `0.952`
+(green brighter than red) instead of the physically expected `~1.8`.
+
+`sharedSpanStretch(ctx, viewId, {targetMedian, sigma, percentile, channels})`
+keeps the per-channel black point (each channel has its own pedestal) but
+normalises every channel against a single span taken from the widest channel at
+P99.95. Same noise in, same noise out. On the M27 frame this took the
+background MAD from `0.00253` to `0.00145` and put R/G at `1.837`.
+
+`channel_ht_stretch` remains correct for SHO channel *balancing*, where the
+channels are deliberately brought to different levels; `shared_span_stretch` is
+the tool for "these channels must read as one brightness scale".
+
+### Added - `mlt_denoise` and the `measure_denoise_effect` proof gate
+
+`MultiscaleLinearTransform.layers` is a **7-column** table
+`[enabled, biasEnabled, bias, nrEnabled, threshold, amount, iterations]`.
+Column 3 is the **bias**, so writing a denoise strength there inflates the
+pedestal instead of smoothing: on M27 the background went from `0.0068` to
+`0.21` — 600x — with no error, no warning, and a clean `executeOn()` return.
+
+`mltDenoise()` puts the strength where it belongs
+(`noiseThresholding` / `noiseThresholdingAmount` / `noiseThreshold` /
+`softThresholding`) and leaves the bias at its stock value. Measured effect:
+noise MAD **−43% (R) / −67% (G)** with nebula medians moving **0.05%**.
+
+`measureDenoiseEffect()` is the missing acceptance gate: it compares a sky
+patch's MAD against a signal patch's median across two calls and requires the
+noise to fall by at least 20% while the signal stays within ±2%. "It looks
+smoother" is not evidence — both a no-op and a flattened image look smoother.
+
+### Fixed - `test/regressions.mjs` exited 1 instead of skipping without PixInsight
+
+The file header promises the whole suite SKIPs with exit 0 when PixInsight is
+not running, but the reachability probe called `ctx.pjsr()` un-guarded.
+`pjsr()` **throws** `BridgeCrashError` when the process is gone rather than
+returning `status: 'error'`, so the skip branch was never reached and `npm test`
+failed on any machine without a live PixInsight. The probe is now wrapped.
+
+### Tests
+
+Regressions 8 and 9 cover the two failures above: [8] asserts the per-channel
+geometry of a shared-span stretch (identical span, distinct black points,
+median actually moves); [9] asserts `mltDenoise` does not inflate the pedestal
+and that the proof gate reports a pass.
+
 ## [0.6.2] - 2026-10-25
 
 ### Fixed - Gaia verification reported a working catalog as unusable

@@ -310,6 +310,54 @@ Getting this wrong does not throw. A malformed `H` can push a single channel to
 saturation and turn the whole frame solid red while reporting success — always
 re-measure channel means after the call.
 
+## MultiscaleLinearTransform: column 3 of `layers` is BIAS, not strength
+
+`layers` is a **7-column** table — `[enabled, biasEnabled, bias, nrEnabled,
+threshold, amount, iterations]`. Column 3 is the **bias**, so writing a denoise
+strength there inflates the pedestal instead of smoothing noise. Measured on
+M27 (2026-10-28): background went from `0.0068` to `0.21` — 600x — with **no
+error, no warning, and a clean `executeOn()`**.
+
+The noise controls are four separate scalar properties:
+
+```javascript
+var m = new MultiscaleLinearTransform();
+m.layers = [[true, true, 3, false, 0.0, 0.500, 1],   // col 3 = bias = 3
+            [true, true, 3, false, 0.0, 0.500, 1],
+            [true, true, 3, false, 0.0, 0.500, 1],
+            [true, true, 2, false, 0.0, 0.500, 1],
+            [true, true, 2, false, 0.0, 0.500, 1]];
+m.noiseThresholding       = true;   // <- the actual denoise switch
+m.noiseThresholdingAmount = 1.0;    // strength
+m.noiseThreshold          = 3.0;
+m.softThresholding        = true;
+m.executeOn(view);
+```
+
+Correct parameters measured on M27 HOO: noise MAD **−43% (R) / −67% (G)**
+while nebula medians moved **0.05%**. Anything that does not achieve both is
+either a no-op or a working image being destroyed.
+
+## Pick ONE white point across channels of a composite
+
+Stretching R, G and B with independently chosen white points gives the weaker
+channel a smaller span, hence a **larger gain on the same noise**. On M27 HOO
+the O span was 62% of H, so O was stretched 366x against H's 230x — 59% more
+gain on identical noise, which reads as colour speckle — and R/G came out
+`0.952` (green brighter than red) instead of the true `~1.8`.
+
+Normalise every channel against one physical span while keeping each channel's
+own black point:
+
+```javascript
+black_c = median_c - k * MAD_c     // per channel: removes its own pedestal
+span    = max over channels of (P99.95_c - black_c)
+white_c = black_c + span           // shared span -> identical gain 1/span
+```
+
+`shared_span_stretch` does this. Rule of thumb: **any channels that must read
+as one brightness scale share a span; only the pedestal is per-channel.**
+
 ## PixelMath channel expressions
 
 The per-channel expression members are `expression0`, `expression1`, `expression2`
