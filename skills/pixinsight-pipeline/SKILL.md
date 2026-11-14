@@ -1051,9 +1051,15 @@ Name configs `TargetName_vXX.json`; the config IS the reproducible recipe.
 - **Every stage reports `ok:true` but the picture never changes**: an unconsumed command
   backlog in `~/.pixinsight-mcp/bridge/commands/` is being replayed by the watcher (113
   pending at worst on the M27 run), each stale command raising a modal error and stalling the
-  real ones. Stop PixInsight first — the watcher holds the file handles, so deletion fails
-  with "正由另一进程使用". **Move** both `bridge/commands` and `bridge/results` aside, create
-  empty replacements, restart. Keep the moved folder as a rollback.
+  real ones. **Fixed in v0.7.2** — `send()` now retires its own command on every exit path
+  (success, timeout, crash) and startup sweeps anything older than 5 minutes, so a fresh
+  backlog on an up-to-date install means one of: the plugin is older than 0.7.2, a command
+  younger than the cutoff whose caller died, or a live run still in flight. Check the file
+  count and timestamps before assuming either. For a pre-0.7.2 install, stop PixInsight
+  first — the watcher holds the handles, so deletion fails with "正由另一进程使用" — then
+  **move** both `bridge/commands` and `bridge/results` aside, create empty replacements,
+  restart, and keep the moved folder as a rollback. Full reasoning in
+  `reference/pjsr-gotchas.md` → "Bridge command queue".
 - **Colour correction made things worse**: a neutralised background can look worse than the
   original cast if the reference region was not actually background. Always re-measure the
   three channel means straight after, and compare against the previous step. A stage that

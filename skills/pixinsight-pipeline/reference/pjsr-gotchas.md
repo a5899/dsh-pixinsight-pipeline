@@ -818,6 +818,28 @@ caller died. Deleting it immediately would risk killing a command that a just-st
 watcher is about to pick up, so the sweep deliberately leaves fresh files alone. If you
 see a fresh leftover after a crash, wait out the 5 minutes (or move it aside by hand).
 
+### A wrong file is worse than a slow run: the watcher-side hole
+
+The watcher had the mirror-image bug, and it is worth knowing because the symptom looks
+like *the fix not working*. When `retireCommandFile()` lost a share-lock race it logged a
+line and left the file "for the next pass" — but the next pass identifies answered
+commands by looking for `results/<id>.json`, and node deletes that result the instant it
+reads it. So the file was never recognised as answered again and sat in the queue for
+ever, even with the node-side fix in place. A failed delete is now recorded in the
+discard ledger (`markDiscarded`), so a later pass retires it.
+
+**Keep the order in mind when you touch either side.** `pjsr` and PixelMath are not
+idempotent; a command that is retired too early fails loudly, but one that is retired too
+late runs a second time. When in doubt, retire: a duplicate application to an already
+saved product is silent and unrecoverable, a missing result is an error you can rerun.
+
+### What this looks like from inside a run
+
+`Timeout: <tool> (no result after Ns)` and `PixInsight process not found — it may have
+crashed` both retire their command now. If you see either, **do not resend the same
+command in a loop** — check `Get-Process PixInsight`, and only then retry. Resending
+turns one failed command into two queued ones.
+
 ## Pass tool arguments through a JSON file, not the command line
 
 Shell quoting mangles `\"` and eats backslashes, producing commands whose paths have
