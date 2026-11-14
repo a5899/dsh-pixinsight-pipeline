@@ -112,4 +112,38 @@ for (const bullet of bullets) {
   assert.ok(bare.locator instanceof URL)
 }
 
-console.log(`brief contract OK — ${bullets.length} traps, ${content.length} chars served`)
+// --- the catalog line is the only thing a reader sees before loading ------------
+//
+// SKILL.md writes `description: |` as a block scalar. A single-line frontmatter
+// reader takes the literal `|` as the description, and the catalog then advertises
+// this skill as "- `pixinsight-pipeline`: |" — which is precisely what shipped on
+// 2026-11-14 and is why the fix exists: routing never matches a bare pipe.
+{
+  const [entry] = await __provider.list()
+  assert.equal(entry.name, 'pixinsight-pipeline')
+  assert.ok(
+    typeof entry.description === 'string' && entry.description.trim().length >= 200,
+    `catalog description must be the authored paragraph, got ${JSON.stringify(entry.description)}`,
+  )
+  assert.ok(
+    !['|', '>', '|-', '>-'].includes(entry.description.trim()),
+    'a block-scalar marker leaked into the catalog description',
+  )
+  assert.ok(
+    entry.description.startsWith('Automated deep sky astrophotography'),
+    `catalog description lost its opening: ${JSON.stringify(entry.description.slice(0, 60))}`,
+  )
+  assert.ok(
+    !/\n\s{2,}\S/.test(entry.description),
+    'catalog description kept the YAML indent, so it renders with stray leading spaces',
+  )
+  assert.ok(
+    entry.description.includes('one-shot colour'),
+    'catalog description was truncated mid-paragraph',
+  )
+}
+
+console.log(
+  `brief contract OK — ${bullets.length} traps, ${content.length} chars served, ` +
+    `catalog description ${(await __provider.list())[0].description.length} chars`,
+)
