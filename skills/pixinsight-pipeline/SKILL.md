@@ -84,6 +84,18 @@ is present — run `resolve-toolkit.mjs` (Step 0 below) and use the path it prin
 
 ## DSH Quick Start
 
+0. **Read the gotchas file. This is step zero, not a suggestion.**
+
+   Before the first `pi-tool` call, read `reference/pjsr-gotchas.md` end to end. It is ~840
+   lines and every section is a failure that already happened on a real machine. Skipping it
+   does not save time — it spends it. The 2026-11-14 sessions spent 30 minutes on the
+   `save_variant` backslash bug, tried eight inert `crop` forms, mis-guessed the
+   `HistogramTransformation` table four times, and had 113 stale bridge commands replay as
+   modal dialogs. All four were documented or derivable from that file.
+
+   Do not sample it and do not trust memory of it. If you cannot quote the current
+   working `crop` form and the reason `saveAs` holds a file handle, you have not read it.
+
 0. **First run — pick a working directory (ask once)**
    Run `workspace_show '{}'`. If it reports `"first_use": true`, nothing has been
    chosen yet: ask the user where previews and intermediate files should live, then
@@ -509,6 +521,11 @@ the channels are built.
 ## Flow A — Mono narrowband (SHO / HOO / false SOO), emission nebulae
 
 ### A.0 Before you touch anything — three measurements
+
+> **Gate:** you may not start A.0 until you have read `reference/pjsr-gotchas.md`. These three
+> measurements are cheap; the traps they guard against are not. If a `pi-tool` call below fails
+> in a way that makes no sense, stop and search the gotchas file for the tool name before you
+> try a second workaround — the answer is almost always already written down.
 
 Run these first. Each one has cost a whole re-run when skipped.
 
@@ -973,6 +990,12 @@ Name configs `TargetName_vXX.json`; the config IS the reproducible recipe.
    letting previews pile up; offload/compress the context when you can.
 
 ## Common Issues
+
+> Every entry below is a symptom. **Before trying a second fix for any of them, search
+> `reference/pjsr-gotchas.md` for the tool name.** The gotchas file carries the measured
+> behaviour and the working call form; this list only tells you what it looks like when it
+> bites. A workaround invented on the spot, because nobody checked, is how the 2026-11-14
+> sessions burned an hour.
 
 - **The subject is invisible / "the data is empty"**: compute a MAD-normalised diagnostic
   stretch before concluding anything — `(v − median) * (0.05 / MAD) + 0.5`. Light-polluted
