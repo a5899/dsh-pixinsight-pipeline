@@ -4,6 +4,43 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-11-14
+
+### Fixed - the bridge queue kept accumulating commands nobody would ever run
+
+Every command written to `~/.pixinsight-mcp/bridge/commands/` is replayed by the
+watcher at the next PixInsight start. Only the *watcher* ever retired those files,
+and it can only retire what it actually saw. Anything whose caller gave up first —
+a timeout, a PixInsight crash, a host restart — stayed on disk forever, because
+nothing on the node side ever looked at `commands/`.
+
+Three pile-ups in a single day: **46, 113 and 83 files**. Each replayed command
+either re-ran a non-idempotent `pjsr`/PixelMath payload or raised one modal error
+dialog pointing at a file that no longer existed, which then presented as
+unrelated downstream failures (`invalid dimension(s)`, because a window never
+opened).
+
+`send()` now retires its command on **every** exit path — success, `Timeout`, and
+`BridgeCrashError` — deleting the `.json` together with its `.ready`/`.tmp`
+siblings. `createBridgeContext()` additionally sweeps abandoned files older than
+5 minutes at startup; anything younger could still be a command a just-started
+watcher is about to pick up.
+
+The watcher side had the matching hole: when its delete lost a share-lock race,
+the command was left for "the next pass", but as soon as node removed the result
+file no later pass could recognise it as answered. Such a command is now recorded
+in the discard ledger so a later pass retires it.
+
+New `test/bridge-hygiene.mjs` (11 assertions, offline — a fake watcher writes
+results exactly like the real one) covers success, unanswered send, silent-watcher
+timeout, startup sweep and sibling suffixes. Wired into `npm test`.
+
+### Fixed - `pjsr()` dropped its `sendOpts`
+
+`pjsr(code)` accepted no second argument, so a caller could not pass
+`timeoutMs`, `exec` or `view` — every script ran on the 20-minute default.
+`executeProcess()` already forwarded its options; `pjsr()` now does the same.
+
 ## [0.7.1] - 2026-10-28
 
 ### Fixed - the installer called a working Gaia catalog "not configured"

@@ -772,15 +772,26 @@ Same lesson as M45 (where the carried-over 0.14 came out too dark): the correct 
 depends on the background offset produced by the upstream chain, so it must be
 re-measured per object.
 
-## Bridge command queue: check the backlog, never `rm` it while PI runs
+## Bridge command queue: the node side now retires its own commands
 
 The watcher replays every unconsumed file in
 `~/.pixinsight-mcp/bridge/commands/` at startup. Left unattended the queue grew to
 **113 pending commands**, each pointing at deleted or renamed files → a modal error
 dialog per command, and the resulting stalls surfaced as unrelated failures downstream
-(`invalid dimension(s)` because a window never opened).
+(`invalid dimension(s)` because a window never opened). Three pile-ups in one day: 46, 113
+and 83 files.
 
-Clearing it while PixInsight runs fails — the watcher holds the handles:
+**Root cause (fixed in v0.7.2).** Only the *watcher* retired command files, and it cannot
+retire what it never saw: a command whose caller timed out, whose PixInsight crashed, or
+whose host restarted stayed on disk forever. Nothing on the node side ever looked at
+`commands/`. `send()` now calls `retireCommand(cmdDir, id)` on **every** exit path
+(success, timeout, `BridgeCrashError`), removing the `.json` plus its `.ready`/`.tmp`
+siblings, and `createBridgeContext()` sweeps abandoned files older than 5 minutes at
+startup. `test/bridge-hygiene.mjs` locks this down.
+
+So the manual dance below should now be unnecessary. Keep it for the case where an
+older install left a backlog behind — and for the case where the queue is draining while
+PixInsight runs, where the watcher still holds the handles:
 
 ```
 Remove-Item : 无法删除项 ...\bridge\commands\<id>.json: 文件 ... 正由另一进程使用
@@ -799,8 +810,13 @@ Move-Item $bridge\results  "$backup\results";  New-Item -ItemType Directory $bri
 ```
 
 Check the backlog count (`Get-ChildItem $bridge\commands -File | Measure-Object`) before
-and after any long run; a non-zero count at start means the previous session left a
-landmine.
+and after any long run. With v0.7.2 a non-zero count at start means either a live run is
+still in flight (files younger than 5 minutes) or an older install wrote them.
+
+**The one case the fix cannot cover:** a command younger than the 5-minute cutoff whose
+caller died. Deleting it immediately would risk killing a command that a just-started
+watcher is about to pick up, so the sweep deliberately leaves fresh files alone. If you
+see a fresh leftover after a crash, wait out the 5 minutes (or move it aside by hand).
 
 ## Pass tool arguments through a JSON file, not the command line
 
