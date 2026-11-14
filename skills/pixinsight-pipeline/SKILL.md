@@ -15,6 +15,43 @@ description: |
 
 # PixInsight Deep Sky Pipeline (DSH-adapted)
 
+<!-- generated from reference/pjsr-gotchas.md — do not hand-edit this block; edit the gotchas -->
+
+## Read this before the first `pi-tool` call
+
+This block ships at the top of the skill, so it is in front of you whether or not you
+opened anything else. It lists the traps that have already destroyed a run on this
+machine, condensed from `reference/pjsr-gotchas.md`. The full file is the
+specification; this is the part you cannot afford to skip.
+
+- **ok:true does not mean a file exists — stat it.** pi-tool.mjs save_variant builds its PJSR path with path.join(VARIANT_DIR, name), which on Windows yields **backslashes**. Interpolated into a PJSR string literal those become escapes: \v → vertical tab \u000b, \b → backspace, \0 → NUL. The save then fails, **still prints {"ok":true} and writes its .json sidecar**, and the target directory contains zero .xisf files. load_variant later dies with No such file.
+- **save_variant eats Windows backslashes into PJSR escapes.** Reach for `pisave.mjs` (view → absolute path) and `piopen.mjs` (absolute path → new view id) instead. Both take a forward-slashed absolute path, verify `File.exists` themselves, and refuse to return success for a file that is not on disk.
+- **crop is inert on a disk-loaded (read-only) image.** An image opened from disk is read-only: `crop()` and `cropTo()` silently change nothing, or throw `read-only image`. Copy it into a fresh `ImageWindow` with `assign()`, crop that, then assert the resulting width/height — every other form looks like it worked. `cropTo(x0, y0, x1, y1)` takes four ints with an exclusive right/bottom edge.
+- **that error means the source window was never open.** The message never means the numbers were the wrong type. It means they were out of range — in practice 0 — because `windowById()` returned a null window for an id that was never opened. Guard the source: `if (w.isNull) throw …` and `if (im.width < 100) throw …` before constructing anything.
+- **the 5-tuple layout is not a valid table here.** `H` is a 5-column table here, 5 rows of `[0, 0.5, 1, 0, 1]` by default. A 6-row table throws `table length out of range (6)`; a value above 0.5 in the third column throws `numeric value out of range`. For a plain midtone shift, use the PixelMath MTF form the tools use instead of hand-building `H`.
+- **a multi-line expression silently changes nothing.** A multi-line expression using var L = ...; compiles without error, runs without error, and **changes nothing** (median identical before and after).
+- **close PI before reading what it wrote.** Closing the image window does **not** release it, and a re-saveAs to the same path fails (the second attempt silently leaves the file untouched — its LastWriteTime stays at the first write). PI holds the handle.
+- **save a linear copy before you stretch.** If you save after stretching, the "linear" checkpoint you just wrote is **already stretched** (measured: an intended linear backup came back with median = 0.140214).
+- **read back max(), not the ok flag.** The tool reports success and every statistic is exactly 0: Both output windows exist with the right dimensions (1120x1120x3) but max = 0.0000 — nothing was written.
+- **too small does nothing, too large erases the stars.** Below the threshold the morphological operator does nothing and still returns ok:true with plausible statistics. Compare the output hash against the input, or make a preview before committing.
+- **a white centre in the preview is not saturation.** save_preview with is_linear:true applies an automatic STF, which saturates the bright core and looks blown out. Measured on the same data: **zero** samples ≥ 0.98 in the H master, max = 0.9167 over the whole frame, and only 0.0683 inside the nebula box. The dynamic range was fine; the signal was merely weak.
+- **crop onto the target before saying it is missing.** A 12x8 block grid is far too coarse for low-surface-brightness extended targets, and medians inside a block throw away exactly the small, low-contrast signal you're looking for. On the M45 frame the grid gave (1716,1489) 0.03976 against globalMed 0.023563 (a 1.7x peak), which reads as "flat field" — yet the nebula is plainly visible once the region is cropped and viewed at native scale.
+- **stale commands replay as modal error dialogs.** The watcher replays every unconsumed file in ~/.pixinsight-mcp/bridge/commands/ at startup. Left unattended the queue grew to **113 pending commands**, each pointing at deleted or renamed files → a modal error dialog per command, and the resulting stalls surfaced as unrelated failures downstream (invalid dimension(s) because a window never opened).
+- **PowerShell eats the quotes in inline JSON.** Same for PJSR source: write the snippet to a UTF-8 .js file and read it back, rather than embedding it in a shell string.
+
+### Two rules that outrank everything below
+
+1. **Read `reference/pjsr-gotchas.md` in full before the first command.** This block is a
+   reminder, not a substitute — it is deliberately lossy, and the file explains *why* each
+   trap exists, which is what lets you recognise a new one.
+2. **A trap you discover goes back into `reference/pjsr-gotchas.md` in the same session,
+   with the measured numbers.** An unrecorded gotcha is a cost the next run pays again.
+
+If any `pi-tool` call fails in a way that does not match the arguments you passed, search
+the gotchas for that tool name before trying a second workaround.
+
+---
+
 ## Read the gotchas BEFORE the first command — not after
 
 `reference/pjsr-gotchas.md` is not optional background reading. Every section in it cost a
