@@ -772,73 +772,67 @@ Same lesson as M45 (where the carried-over 0.14 came out too dark): the correct 
 depends on the background offset produced by the upstream chain, so it must be
 re-measured per object.
 
-## Bridge command queue: the node side now retires its own commands
+## Bridge command queue: close PixInsight, then clear it
 
-The watcher replays every unconsumed file in
-`~/.pixinsight-mcp/bridge/commands/` at startup. Left unattended the queue grew to
-**113 pending commands**, each pointing at deleted or renamed files → a modal error
-dialog per command, and the resulting stalls surfaced as unrelated failures downstream
-(`invalid dimension(s)` because a window never opened). Three pile-ups in one day: 46, 113
-and 83 files.
+> **The operating rule (decided 2026-11-14, measured the hard way): shut PixInsight down
+> before you tidy the bridge.** While PI is running, every command file it touched stays
+> locked to that process and **cannot be deleted or renamed by anybody** — not by node,
+> not by PJSR, not by PowerShell, not even with `.done`-rename fallbacks. Close PI and the
+> whole backlog becomes deletable in one shot.
 
-**Root cause (fixed in v0.7.2).** Only the *watcher* retired command files, and it cannot
-retire what it never saw: a command whose caller timed out, whose PixInsight crashed, or
-whose host restarted stayed on disk forever. Nothing on the node side ever looked at
-`commands/`. `send()` now calls `retireCommand(cmdDir, id)` on **every** exit path
-(success, timeout, `BridgeCrashError`), removing the `.json` plus its `.ready`/`.tmp`
-siblings, and `createBridgeContext()` sweeps abandoned files older than 5 minutes at
-startup. `test/bridge-hygiene.mjs` locks this down.
+Measured on 2026-11-14 (v0.7.2 installed, PI 1.9.3 Lockwood, Windows 10 x64):
 
-So the manual dance below should now be unnecessary. Keep it for the case where an
-older install left a backlog behind — and for the case where the queue is draining while
-PixInsight runs, where the watcher still holds the handles:
+| Observation | Result |
+|---|---|
+| Signal after a normal `send()` | `commands/` keeps the file, `results/` is empty (node read and deleted the result) |
+| `[System.IO.File]::Open($p,'Open','ReadWrite','None')` | fails — "另一个进程正在使用此文件" |
+| `[System.IO.File]::Open($p,'Open','Read','ReadWrite')` | **succeeds** — a *share* lock, not exclusive; content readable |
+| `Remove-Item -Force` / `[IO.File]::Delete` / `Move-Item` | all fail — Windows deletes need DELETE access, a share-lock reader blocks it |
+| 6 retries at 10 s intervals | `deleted=0 failed=5` every round — the lock never expires |
+| PJSR `File.remove` then `File.rename` to `.done` (the built-in fallback) | both fail too |
+| Handle count across 10 further commands | 1855 → 1862 — **no descriptor leak**; nothing accumulates |
+| `Stop-Process PixInsight` then delete | `deleted=5 failed=0` — clean instantly |
 
-```
-Remove-Item : 无法删除项 ...\bridge\commands\<id>.json: 文件 ... 正由另一进程使用
-```
+So the lock lives in the PixInsight process, does not leak, never ages out, and is not
+releasable from inside PI. The node-side `retireCommand()` (v0.7.2) and the watcher-side
+`retireCommandFile()` both fail against it — **they are defence in depth for the case
+where PI is already gone, not a way to keep the queue clean while PI runs.** Do not
+spend another hour trying to delete these files with PI open; that was the conclusion of
+the 2026-11-14 investigation after testing nine different approaches.
 
-(That message is the only evidence that the queue is still draining; it is not a bug in
-your own command.)
-Correct sequence:
+### The clean-up sequence
 
 ```powershell
 Get-Process PixInsight | Stop-Process -Force
-Start-Sleep -Seconds 4
+# wait for the process to actually exit — the lock outlives the Stop-Process call
+while (Get-Process PixInsight -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }
 # move, don't delete — keeps a rollback path
-Move-Item $bridge\commands "$backup\commands"; New-Item -ItemType Directory $bridge\commands
-Move-Item $bridge\results  "$backup\results";  New-Item -ItemType Directory $bridge\results
+Move-Item $bridge\commands\* "$backup\commands\" -Force
+Get-ChildItem $bridge\results -File | Remove-Item -Force
 ```
 
-Check the backlog count (`Get-ChildItem $bridge\commands -File | Measure-Object`) before
-and after any long run. With v0.7.2 a non-zero count at start means either a live run is
-still in flight (files younger than 5 minutes) or an older install wrote them.
+Verify with `(Get-ChildItem $bridge\commands -File).Count` before and after any long run.
+A non-zero count at start means a previous session left a backlog: close PI, archive it,
+reopen.
 
-**The one case the fix cannot cover:** a command younger than the 5-minute cutoff whose
-caller died. Deleting it immediately would risk killing a command that a just-started
-watcher is about to pick up, so the sweep deliberately leaves fresh files alone. If you
-see a fresh leftover after a crash, wait out the 5 minutes (or move it aside by hand).
+### What the queue costs you if you skip it
 
-### A wrong file is worse than a slow run: the watcher-side hole
-
-The watcher had the mirror-image bug, and it is worth knowing because the symptom looks
-like *the fix not working*. When `retireCommandFile()` lost a share-lock race it logged a
-line and left the file "for the next pass" — but the next pass identifies answered
-commands by looking for `results/<id>.json`, and node deletes that result the instant it
-reads it. So the file was never recognised as answered again and sat in the queue for
-ever, even with the node-side fix in place. A failed delete is now recorded in the
-discard ledger (`markDiscarded`), so a later pass retires it.
-
-**Keep the order in mind when you touch either side.** `pjsr` and PixelMath are not
-idempotent; a command that is retired too early fails loudly, but one that is retired too
-late runs a second time. When in doubt, retire: a duplicate application to an already
-saved product is silent and unrecoverable, a missing result is an error you can rerun.
-
-### What this looks like from inside a run
+The watcher replays every unconsumed file at startup. Left unattended the queue reached
+**113 pending commands** on 2026-11-14 (three pile-ups that day: 46, 113 and 83), each
+pointing at a deleted or renamed file → one modal error dialog per command, and the stalls
+surfaced as unrelated failures downstream (`invalid dimension(s)` because a window never
+opened).
 
 `Timeout: <tool> (no result after Ns)` and `PixInsight process not found — it may have
-crashed` both retire their command now. If you see either, **do not resend the same
-command in a loop** — check `Get-Process PixInsight`, and only then retry. Resending
-turns one failed command into two queued ones.
+crashed` both mean the command is still on disk. **Do not resend the same command in a
+loop** — that turns one leftover into two. Check `Get-Process PixInsight` first, and clean
+the queue with PI closed.
+
+**Keep the order in mind.** `pjsr` and PixelMath are not idempotent; a command retired too
+early fails loudly, but one retired too late runs a second time. When in doubt, retire: a
+duplicate application to an already saved product is silent and unrecoverable, a missing
+result is an error you can rerun.
+
 
 ## Pass tool arguments through a JSON file, not the command line
 

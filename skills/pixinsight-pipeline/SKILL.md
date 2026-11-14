@@ -36,7 +36,7 @@ specification; this is the part you cannot afford to skip.
 - **too small does nothing, too large erases the stars.** Below the threshold the morphological operator does nothing and still returns ok:true with plausible statistics. Compare the output hash against the input, or make a preview before committing.
 - **a white centre in the preview is not saturation.** save_preview with is_linear:true applies an automatic STF, which saturates the bright core and looks blown out. Measured on the same data: **zero** samples ≥ 0.98 in the H master, max = 0.9167 over the whole frame, and only 0.0683 inside the nebula box. The dynamic range was fine; the signal was merely weak.
 - **crop onto the target before saying it is missing.** A 12x8 block grid is far too coarse for low-surface-brightness extended targets, and medians inside a block throw away exactly the small, low-contrast signal you're looking for. On the M45 frame the grid gave (1716,1489) 0.03976 against globalMed 0.023563 (a 1.7x peak), which reads as "flat field" — yet the nebula is plainly visible once the region is cropped and viewed at native scale.
-- **stale commands replay as modal error dialogs.** The watcher replays every unconsumed file in ~/.pixinsight-mcp/bridge/commands/ at startup. Left unattended the queue grew to **113 pending commands**, each pointing at deleted or renamed files → a modal error dialog per command, and the resulting stalls surfaced as unrelated failures downstream (invalid dimension(s) because a window never opened).
+- **stale commands replay as modal error dialogs.** The watcher replays every unconsumed file in ~/.pixinsight-mcp/bridge/commands/ at startup. Left unattended the queue grew to **113 pending commands**, each pointing at deleted or renamed files → a modal error dialog per command, and the resulting stalls surfaced as unrelated failures downstream (invalid dimension(s) because a window never opened). Close PixInsight before clearing the queue: while PI runs, those files are share-locked inside the PI process and no deleter anywhere can remove them.
 - **PowerShell eats the quotes in inline JSON.** Same for PJSR source: write the snippet to a UTF-8 .js file and read it back, rather than embedding it in a shell string.
 
 ### Two rules that outrank everything below
@@ -1048,18 +1048,18 @@ Name configs `TargetName_vXX.json`; the config IS the reproducible recipe.
 - **`Image.crop()` did nothing / "read-only image"**: an image opened from disk is read-only.
   Copy it into a fresh `ImageWindow` (`assign`) first, then crop *that*. Full recipe in
   `reference/pjsr-gotchas.md` → "`image.crop()` — works, but only on a WRITABLE image".
-- **Every stage reports `ok:true` but the picture never changes**: an unconsumed command
-  backlog in `~/.pixinsight-mcp/bridge/commands/` is being replayed by the watcher (113
-  pending at worst on the M27 run), each stale command raising a modal error and stalling the
-  real ones. **Fixed in v0.7.2** — `send()` now retires its own command on every exit path
-  (success, timeout, crash) and startup sweeps anything older than 5 minutes, so a fresh
-  backlog on an up-to-date install means one of: the plugin is older than 0.7.2, a command
-  younger than the cutoff whose caller died, or a live run still in flight. Check the file
-  count and timestamps before assuming either. For a pre-0.7.2 install, stop PixInsight
-  first — the watcher holds the handles, so deletion fails with "正由另一进程使用" — then
-  **move** both `bridge/commands` and `bridge/results` aside, create empty replacements,
-  restart, and keep the moved folder as a rollback. Full reasoning in
-  `reference/pjsr-gotchas.md` → "Bridge command queue".
+- **Bridge queue keeps a backlog / those command files will not delete**: with PixInsight
+  running, every command file it touched is held by a **share lock inside the PI process**
+  that never ages out and cannot be released, renamed or deleted — not by node, not by
+  PJSR, not by PowerShell. Measured 2026-11-14: 6 retries over 60 s all failed; deleting the
+  same files the instant PI exited worked first try. **So the rule is: close PixInsight,
+  then clear the queue** (`Stop-Process`, wait for the process to actually exit, then
+  `Move-Item bridge\commands\* $backup` and empty `bridge\results`). Do not try to keep the
+  queue clean while PI runs. v0.7.2 retires commands on every node-side exit path, which
+  covers PI already being gone — it is defence in depth, not a cure for the lock. A backlog
+  seen while PI is running is expected, not evidence that the fix failed. Full measurement
+  table in `reference/pjsr-gotchas.md` → "Bridge command queue: close PixInsight, then
+  clear it".
 - **Colour correction made things worse**: a neutralised background can look worse than the
   original cast if the reference region was not actually background. Always re-measure the
   three channel means straight after, and compare against the previous step. A stage that
