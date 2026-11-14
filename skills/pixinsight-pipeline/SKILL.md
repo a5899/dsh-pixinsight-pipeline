@@ -482,6 +482,28 @@ the channels are built.
 
 ## Flow A — Mono narrowband (SHO / HOO / false SOO), emission nebulae
 
+### A.0 Before you touch anything — three measurements
+
+Run these first. Each one has cost a whole re-run when skipped.
+
+1. **Survey every master and read `max`.** `pisurvey.mjs`-style one-liner per channel
+   (`median / mad / sigma / min / max`). `max = 1.000000` anywhere means that channel
+   already has saturated pixels in the stack — record it now, because the stretch will
+   make it look like your fault later. In the M27 run H/O/S/L/R/G/B all read
+   `max = 1.0` except L (`0.7815`).
+2. **Contrast census of the object region.** For a 640x640 box on the target, report
+   background, p99, p99.9, peak and `p99/bg`. That ratio decides which channel carries
+   luminance and how much of each goes into the mix — SII at 1.20 got only 35% of the
+   red on M27, SII/Ha recipes assuming parity would have wrecked it.
+3. **Clip census, not a judgement call.** Sweep the object box at stride 3 counting
+   samples `>= 0.98`. `ge98 == 0` means the blown-out white core you see in the preview
+   is the *auto-STF preview* saturating, not the data — fix the stretch, don't build a
+   highlight-recovery branch. On M27 this returned zero over the whole frame
+   (`max = 0.9167`) while the preview looked completely burned out.
+
+Only then pick a stretch target — and probe it, never inherit it. See
+`reference/pjsr-gotchas.md` → "Weak-signal channels" and "Stretch target".
+
 ### A.1 Linear stage — clean the data
 
 1. **Crop + align.** `StarAlignment` S/H/O onto one reference, then `DynamicCrop` with the
@@ -526,6 +548,10 @@ the channels are built.
    With no colour reference, neutralise against the narrowband channels' own background.
 10. **Star separation.** `separate_stars` → Starless + Stars. From here on, **every
     structural enhancement happens on the Starless plate** and may be aggressive.
+    **Verify the split actually produced pixels** before building on it — read `max` back
+    from both output views. On M27 this returned `ok:true`, correct dimensions, and two
+    completely black plates (`max = 0.0000`); nothing downstream could have worked. If it
+    is empty, fall back to `shrink_stars` on the whole frame (see step 13).
 11. **Colour — build the gold/blue.**
     - Preferred: NarrowbandNormalization when installed. Remove green *moderately* — stripping
       it entirely creates banding and an unnatural look.
@@ -545,9 +571,45 @@ the channels are built.
     - Halo removal on the Stars plate uses the same invert/SCNR/invert.
     - Maintenance: a saturation boost via Curves, and
       `shrink_stars` (MorphologicalTransformation, mild) so the nebula leads.
+      **Measured on a 1120x1120 M27 crop:** `{iterations 1, size 2, amount 0.12}` is a
+      **silent no-op** (output byte-identical to input, still `ok:true`);
+      `{2, 3, 0.45}` erases the stars and smears the nebula;
+      **`{1, 3, 0.22}` is the working value.** Compare the output hash to the input, or
+      preview, before believing any shrink ran.
 14. **Recombine.** `recombine_stars` (screen blend by default).
 15. **Output.** Final light `auto_denoise {"purpose":"final"}`, optional HT to darken the
-    background a touch, then save **XISF (16-bit, full resolution) + JPG**.
+    background a touch, then save **XISF (16-bit, full resolution) + full-resolution PNG +
+    full-resolution JPG**. All three, same dimensions — the PNG is the archive copy, the JPG
+    is what gets opened day to day. Do not downgrade the JPG by resizing it; fix the tonal
+    range instead (see "Tonal range" below).
+16. **Close PixInsight before handing any file over.** `saveAs()` holds the handle until
+    the process exits; a delivered file otherwise reads as
+    `EBUSY: resource busy or locked` in whatever opens it next. Verify with an exclusive
+    open under `FileShare.None`, not by trusting the export's `ok`.
+
+### Tonal range — the step that silently ruins a finished file
+
+A finished, correctly stretched image can still export as a dull grey frame. Check the
+8-bit histogram before declaring done (`pngstats.mjs`-style, lazily on the PNG):
+
+- **Both ends must be used.** On M45 v03 the export sat at `p1=25 p50=43 p99=129` — the
+  top **125 levels were empty**, so it read as washed out. The 16→8 conversion was
+  correct; the range mapping was missing. Remapping `($T - 0.10) / (0.45 - 0.10)` moved it
+  to `p1=4 p50=54 p99=254`.
+- **Never map with a hard linear scale alone.** That same remap pushed star cores to a
+  flat white disc (`FULL_WHITE 0.911%`, a 29.7%-clipped cell). Add a **tanh shoulder**
+  above a knee instead:
+
+  ```
+  x = ($T - black) / (white - black)
+  iif(x < knee, x, knee + (1-knee) * tanh((x-knee) / (1-knee)))
+  ```
+
+  Measured on M45: `knee 0.45` kept the midtone median identical (0.2155) while taking
+  full-white from 0.911% to **0.000%**. `knee 0.30` went further but flattened the star
+  cluster — 0.45 is the safe default.
+- Judge the fix on a **crop of the brightest star core**, not the full frame; at 1568 px
+  wide the bloat is one or two pixels and looks like nothing.
 
 ---
 
@@ -847,10 +909,15 @@ Every run MUST produce a complete artifact set in the target's `output/processed
 | Artifact | File | Purpose |
 |----------|------|---------|
 | **XISF** | `iteration_XX.xisf` | Full-resolution output |
-| **JPEG preview** | `iteration_XX.jpg` | Quick visual review |
+| **PNG** | `iteration_XX.png` | Full-resolution lossless archive copy |
+| **JPEG** | `iteration_XX.jpg` | Full-resolution, what the user opens day to day |
 | **Config JSON** | `TargetName_vXX.json` | Exact parameters used (created before run) |
 | **Iteration notes** | `iteration_XX.md` | Analysis, metrics, assessment, next steps |
 | **Step previews** | `~/.pixinsight-mcp/previews/*.jpg` | Per-step JPEG exports |
+
+All three image formats ship at **full resolution** — never shrink one to "keep it small".
+If the JPG needs to be lighter, the answer is tonal-range work (see "Tonal range"), not
+pixels. Close PixInsight before handing files over, then verify each one opens exclusively.
 
 Write `iteration_XX.md` **IMMEDIATELY** after each run (before any other work). Include config,
 key changes table (with rationale), results (per-channel GC stats, stretch median/max, final
@@ -886,17 +953,38 @@ Name configs `TargetName_vXX.json`; the config IS the reproducible recipe.
   data often does contain the target, sitting only a few percent above the sky background.
   Resolve whether to fight for the signal or report it as unprocessable; do not guess from a
   normal preview.
+  **And before declaring a faint extended target absent, crop to it and look.** On the M45
+  run the Pleiades reflection nebula was pronounced "not present" from a 1568 px-wide
+  thumbnail and a 12x8 block-median grid — both destroy a low-contrast glow a few tens of
+  pixels across. Cropping to the cluster showed a large, obvious blue nebula. Block-median
+  grids cannot prove absence; only a crop at scale can. Never tell the user an object is
+  missing on the strength of a downscaled review.
+- **`Image.crop()` did nothing / "read-only image"**: an image opened from disk is read-only.
+  Copy it into a fresh `ImageWindow` (`assign`) first, then crop *that*. Full recipe in
+  `reference/pjsr-gotchas.md` → "`image.crop()` — works, but only on a WRITABLE image".
+- **Every stage reports `ok:true` but the picture never changes**: an unconsumed command
+  backlog in `~/.pixinsight-mcp/bridge/commands/` is being replayed by the watcher (113
+  pending at worst on the M27 run), each stale command raising a modal error and stalling the
+  real ones. Stop PixInsight first — the watcher holds the file handles, so deletion fails
+  with "正由另一进程使用". **Move** both `bridge/commands` and `bridge/results` aside, create
+  empty replacements, restart. Keep the moved folder as a rollback.
 - **Colour correction made things worse**: a neutralised background can look worse than the
   original cast if the reference region was not actually background. Always re-measure the
   three channel means straight after, and compare against the previous step. A stage that
   reports success but moves the ratio the wrong way must be rolled back, not compensated for
   downstream.
 - **Whole frame went solid red (or another single colour) after a histogram step**: the
-  `HistogramTransformation.H` array was malformed. It must be five arrays
-  `[blackPoint, midtones, whitePoint, lowClip, highClip]` for R, G, B, L, Alpha. This does
-  not throw — roll back to the last checkpoint and rebuild it.
-- **A "crop" step reported success but the image is unchanged**: `img.crop(x0,y0,x1,y1)` is a
-  silent no-op. Use `img.crop([x0, y0, x1, y1])`.
+  `HistogramTransformation.H` table was malformed. On this build `H` must have **exactly 5
+  rows of 5** (`[0, 0.5, 1, 0, 1]` is the default; 6 rows throws
+  `table length out of range (6)`). The documented
+  `[blackPoint, midtones, whitePoint, lowClip, highClip]` semantics do **not** hold here —
+  values above ~0.5 in column 3 throw `numeric value out of range`. When in doubt skip HT
+  entirely and do the mapping in single-expression PixelMath:
+  `P.expression = '((1-m)*$T)/(((1-2*m))*$T+m)'` with `m` the midtones balance.
+- **A "crop" step reported success but the image is unchanged**: the image was opened from
+  disk and is **read-only** — `crop`/`cropTo` silently do nothing, or throw
+  `Image.cropTo(): read-only image`. Copy into a fresh `ImageWindow` via `assign` and crop
+  that; verify `width`/`height` changed before going further.
 - **`File.size is not a function` mid-script**: several `File` members do not exist. Re-run with
   the call removed; if a save already happened before the throw, do not save it twice — check
   the file on disk first. See `reference/pjsr-gotchas.md`.
