@@ -1,5 +1,12 @@
 # PJSR Gotchas & Constraints
 
+> **Read this file first, every session, before the first command.** Each section below cost a
+> real image or a real hour on this machine. The 2026-11-14 runs re-learned the `save_variant`
+> backslash bug (30 min), eight inert `crop` forms, four parser errors on the same
+> `HistogramTransformation` table, and a 113-command bridge backlog — most of which already had a
+> section here or could be derived from one. Treat a surprise here as a bug in your reading order,
+> not as bad luck. Anything new you learn goes back into this file, with numbers, the same session.
+
 ## Language: ECMAScript 5 Only
 PJSR runs ECMAScript 5. Do NOT use:
 - `let`, `const` — use `var`

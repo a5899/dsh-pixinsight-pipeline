@@ -15,6 +15,32 @@ description: |
 
 # PixInsight Deep Sky Pipeline (DSH-adapted)
 
+## Read the gotchas BEFORE the first command — not after
+
+`reference/pjsr-gotchas.md` is not optional background reading. Every section in it cost a
+real image, a real hour, or a silently-corrupted file on this exact machine. Read it before you
+open the first master.
+
+The 2026-11-14 sessions proved the cost of skipping it: `save_variant` reported `ok:true` while
+writing nothing (30 minutes), `crop` silently ignored eight different call forms, the
+`HistogramTransformation` table layout was guessed four times wrong, and 113 stale bridge
+commands replayed as modal error dialogs. Most of those were already documented or derivable —
+they were re-learned only because nobody read the file first.
+
+Minimum reading order before any run:
+
+| Read | Because |
+|---|---|
+| `reference/pjsr-gotchas.md` | every `ok:true` that lies, every silent no-op, every locked file |
+| `reference/preflight.md` | what must be true before step 1 |
+| `reference/director-flow.md` | the flow for *this* target type (A / B / C) |
+| `reference/xterminator-tools.md` | BXT/NXT parameter semantics that the stats do not reflect |
+
+Then, and only then, start measuring. When you hit something not in those files, that is a
+finding to **write back into `pjsr-gotchas.md` in the same session**, with the measured numbers —
+not a note to remember later. A gotcha learned and not written down is a gotcha the next session
+will pay for again.
+
 ## What this skill is
 
 This skill lets the agent drive PixInsight to process calibrated linear masters into
